@@ -156,7 +156,9 @@ class Scope(object):
         ''' Interpolates value with all properties from current node and it's
             parents
         '''
-        if isinstance(value, basestring):
+        if hasattr(value, '__call__'):
+            return value(self)
+        elif isinstance(value, basestring):
             format_args = self.get_interpolation_values()
             try:
                 return value.format(**format_args)
@@ -522,7 +524,7 @@ class Builder(Scope):
         ''' Sets builder config values '''
         Scope.set_checked('builder_name', name, basestring)
         Scope.set_checked('builder_category', category, basestring)
-        Scope.set_checked('builder_builddir', build_dir, basestring)
+        Scope.set_checked('builder_builddir', build_dir, None)
         Scope.set_checked('builder_slavebuilddir', slave_build_dir, basestring)
         Scope.set_checked('builder_nextSlave', next_slave, None)
         Scope.set_checked('builder_nextBuild', next_build, None)
