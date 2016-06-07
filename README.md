@@ -1,0 +1,2 @@
+# ebb
+Easier buildbot configuration
