@@ -253,7 +253,6 @@ class Scope(object):
             interpolated_it = self.get_properties_names(prefix)
             raw_it = interpolated_it & raw
             rendered_it = interpolated_it & rendered
-            print(prefix, rendered_it)
             interpolated_it = interpolated_it - raw_it - rendered_it
             props[prefix] = (interpolated_it, raw_it, rendered_it)
 
