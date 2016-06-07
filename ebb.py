@@ -35,12 +35,15 @@ import buildbot.process.factory
 import buildbot.schedulers.basic
 import buildbot.schedulers.forcesched
 import buildbot.schedulers.timed
+import buildbot.schedulers.triggerable
 import buildbot.status.html
 import buildbot.status.mail
 import buildbot.status.web.auth
 import buildbot.status.web.authz
 import buildbot.steps.shell
+import buildbot.steps.trigger
 import buildbot.steps.source.p4
+
 import zope.interface
 
 class Scope(object):
@@ -208,18 +211,19 @@ class Scope(object):
 
     def get_parent_of_type(self, parent_type):
         ''' Find closest parent of specified node type '''
+        if self._parent is None:
+            return None
+
         if isinstance(self._parent, parent_type):
             return self._parent
 
-        result = self._parent.get_parent_of_type(parent_type)
-        assert result is not None
-        return result
+        return self._parent.get_parent_of_type(parent_type)
 
     def build(self, config):
         ''' Builds this node '''
-        self._build(config)
         for child in self.children:
             child.build(config)
+        self._build(config)
 
     @abc.abstractmethod
     def _build(self, config):
@@ -566,6 +570,10 @@ class Builder(Scope):
         self._add_single_branch_scheduler(config)
         self._add_force_scheduler(config)
 
+        parent_trigger = self.get_parent_of_type(Trigger)
+        if parent_trigger is not None:
+            parent_trigger.add_builder(self.get_interpolated('builder_name'))
+
     def _add_single_branch_scheduler(self, config):
         if self._accept_regex is None:
             return
@@ -826,6 +834,44 @@ class _ChangeFilter(object):
                         continue
                 return True
         return False
+
+class Trigger(Step):
+    ''' Triggers builders declared in child scope '''
+    def __init__(self, name, *builder_names):
+        super(Trigger, self).__init__(name)
+        self._builder_names = []
+        self._builder_names.extend(builder_names)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def builder(name, category=None, description=None):
+        ''' Helper to trigger a single builder '''
+        with Trigger('%s-trigger' % name):
+            with Builder(name, category, description) as builder:
+                yield builder
+
+    @staticmethod
+    def config(wait_for_finish=None,
+               always_use_latest=None):
+        Scope.set_checked('trigger_waitForFinish', wait_for_finish, bool)
+        Scope.set_checked('trigger_alwaysUseLatest', always_use_latest, bool)
+
+    def add_builder(self, builder_name):
+        ''' Adds a builder to this trigger '''
+        self._builder_names.append(builder_name)
+
+    def _get_step(self, config, step_args):
+        scheduler_name = '%s-scheduler' % self.get_interpolated('step_name')
+        scheduler = buildbot.schedulers.triggerable.Triggerable(
+            name=scheduler_name,
+            builderNames=self._builder_names)
+        config.buildbot_config['schedulers'].append(scheduler)
+
+        step_args['schedulerNames'] = [scheduler_name]
+
+        del step_args['workdir']
+        return self._build_class(buildbot.steps.trigger.Trigger, 'trigger',
+                                 additional=step_args)
 
 class _Renderer(object):
     zope.interface.implements(buildbot.interfaces.IRenderable)
