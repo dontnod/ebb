@@ -500,6 +500,7 @@ class Builder(Scope):
         self._reject_regex = None
         self._factory = buildbot.process.factory.BuildFactory()
         self._local_slave_tags = []
+        self._nightly = None
 
         self.properties['builder_name'] = name
         if category is not None:
@@ -519,6 +520,19 @@ class Builder(Scope):
         ''' Triggers this build on change from source control '''
         self._accept_regex = accept_regex
         self._reject_regex = reject_regex
+
+    def trigger_nightly(self,
+                        minute=None,
+                        hour=None,
+                        day_of_month=None,
+                        month=None,
+                        day_of_week=None):
+        ''' Triggers this build nightly '''
+        self._nightly = {'minute' : minute,
+                         'hour' : hour,
+                         'dayOfMonth': day_of_month,
+                         'month' : month,
+                         'dayOfWeek' : day_of_week}
 
     @staticmethod
     def config(name=None,
@@ -617,6 +631,7 @@ class Builder(Scope):
 
         config.buildbot_config['builders'].append(builder)
         self._add_single_branch_scheduler(config)
+        self._add_nightly_scheduler(config)
         self._add_force_scheduler(config)
         self._add_mail_status(config)
 
@@ -641,6 +656,21 @@ class Builder(Scope):
                 'reason' : 'A CL Triggered this build'}
 
         scheduler_class = buildbot.schedulers.basic.SingleBranchScheduler
+        scheduler = self._build_class(scheduler_class,
+                                      'scheduler',
+                                      additional=args)
+        config.buildbot_config['schedulers'].append(scheduler)
+
+    def _add_nightly_scheduler(self, config):
+        if self._nightly is None:
+            return
+        builder_name = self.get_interpolated('builder_name')
+        args = {'name' : '%s nightly scheduler' % builder_name,
+                'builderNames' : [builder_name],
+                'branch' : None} #We don't use branches the way buildbot expects it
+        args.update(self._nightly)
+
+        scheduler_class = buildbot.schedulers.timed.Nightly
         scheduler = self._build_class(scheduler_class,
                                       'scheduler',
                                       additional=args)
@@ -900,6 +930,7 @@ class Trigger(Step):
         super(Trigger, self).__init__(name)
         self._builder_names = []
         self._builder_names.extend(builder_names)
+        self._nightly = None
 
     @staticmethod
     @contextlib.contextmanager
@@ -915,18 +946,38 @@ class Trigger(Step):
         Scope.set_checked('trigger_waitForFinish', wait_for_finish, bool)
         Scope.set_checked('trigger_alwaysUseLatest', always_use_latest, bool)
 
+    def nightly(self,
+                minute=None,
+                hour=None,
+                day_of_month=None,
+                month=None,
+                day_of_week=None):
+        ''' Uses a nightly triggerable instead of a triggerable '''
+        self._nightly = {'minute' : minute,
+                         'hour' : hour,
+                         'dayOfMonth': day_of_month,
+                         'month' : month,
+                         'dayOfWeek' : day_of_week}
+
     def add_builder(self, builder_name):
         ''' Adds a builder to this trigger '''
         self._builder_names.append(builder_name)
 
     def _get_step(self, config, step_args):
-        scheduler_name = '%s-scheduler' % self.get_interpolated('step_name')
-        scheduler = buildbot.schedulers.triggerable.Triggerable(
-            name=scheduler_name,
-            builderNames=self._builder_names)
+        args = {'name' : '%s-scheduler' % self.get_interpolated('step_name'),
+                'builderNames' : self._builder_names}
+
+        if self._nightly is not None:
+            args.update(self._nightly)
+            scheduler_class = buildbot.schedulers.timed.NightlyTriggerable
+        else:
+            scheduler_class = buildbot.schedulers.triggerable.Triggerable
+
+        scheduler = scheduler_class(**args)
+
         config.buildbot_config['schedulers'].append(scheduler)
 
-        step_args['schedulerNames'] = [scheduler_name]
+        step_args['schedulerNames'] = scheduler.name
 
         del step_args['workdir']
         return self._build_class(buildbot.steps.trigger.Trigger, 'trigger',
