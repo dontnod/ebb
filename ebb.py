@@ -41,8 +41,12 @@ import buildbot.status.mail
 import buildbot.status.web.auth
 import buildbot.status.web.authz
 import buildbot.steps.shell
-import buildbot.steps.trigger
 import buildbot.steps.source.p4
+import buildbot.steps.trigger
+import buildbot.util
+
+import twisted.internet.utils
+import twisted.internet.defer
 
 import zope.interface
 
@@ -537,6 +541,39 @@ class Builder(Scope):
         Scope.set_checked('change_filter_project', project, basestring)
 
     @staticmethod
+    def mail_config(from_address=None,
+                    send_to_interested_users=None,
+                    subject=None,
+                    mode=None,
+                    add_logs=None,
+                    relay_host=None,
+                    smpt_port=None,
+                    use_tls=None,
+                    smtp_user=None,
+                    smtp_password=None,
+                    lookup=None,
+                    message_formatter=None):
+        ''' Sets mail related settings '''
+        Scope.set_checked('mail_fromaddr', from_address, str)
+        Scope.set_checked('mail_sendToInterestedUsers',
+                          send_to_interested_users, bool)
+        Scope.set_checked('mail_subject', subject, str)
+        Scope.set_checked('mail_mode', mode, None)
+        Scope.set_checked('mail_addLogs', add_logs, bool)
+        Scope.set_checked('mail_relayhost', relay_host, str)
+        Scope.set_checked('mail_smtpPort', smpt_port, int)
+        Scope.set_checked('mail_useTls', use_tls, bool)
+        Scope.set_checked('mail_smtpUser', smtp_user, str)
+        Scope.set_checked('mail_smtpPassword', smtp_password, str)
+        Scope.set_checked('mail_lookup', lookup, None)
+        Scope.set_checked('mail_messageFormatter', message_formatter, None)
+
+    @staticmethod
+    def add_extra_recipients(*emails):
+        ''' Adds extra recipients to users '''
+        Scope.append('mail_extraRecipients', *emails)
+
+    @staticmethod
     def add_slave_tags(*tags):
         ''' Adds builder tags to current scope '''
         Scope.append('_builder_slave_tags', tags)
@@ -571,6 +608,7 @@ class Builder(Scope):
         config.buildbot_config['builders'].append(builder)
         self._add_single_branch_scheduler(config)
         self._add_force_scheduler(config)
+        self._add_mail_status(config)
 
         parent_trigger = self.get_parent_of_type(Trigger)
         if parent_trigger is not None:
@@ -609,6 +647,14 @@ class Builder(Scope):
         scheduler = scheduler_class(**args)
         config.buildbot_config['schedulers'].append(scheduler)
 
+    def _add_mail_status(self, config):
+        extra_recipients = self.get_interpolated('mail_extraRecipients')
+        send_mail = self.get_interpolated('mail_sendToInterestedUsers')
+        if extra_recipients or send_mail:
+            mail_status = self._build_class(buildbot.status.mail.MailNotifier,
+                                            'mail',
+                                            raw=['mail_messageFormatter'])
+            config.buildbot_config['status'].append(mail_status)
 
 class Repository(Scope):
     ''' Change source base scope '''
@@ -874,6 +920,53 @@ class Trigger(Step):
         del step_args['workdir']
         return self._build_class(buildbot.steps.trigger.Trigger, 'trigger',
                                  additional=step_args)
+
+def p4_email_lookup(scope):
+    ''' Returns a callable to use in the 'lookup' argument of Builder
+        mail_config that will get email from Perforce users '''
+    class _Lookup(buildbot.util.ComparableMixin):
+        zope.interface.implements(buildbot.interfaces.IEmailLookup)
+        def __init__(self, port, user, password, p4bin):
+            self._port = port
+            self._user = user
+            self._password = password
+            self._p4bin = p4bin
+            self._email_re = re.compile(r"Email:\s+(?P<email>\S+@\S+)\s*$")
+
+        @twisted.internet.defer.deferredGenerator
+        #pylint: disable=invalid-name,missing-docstring
+        def getAddress(self, name):
+            if '@' in name:
+                yield name
+                return
+
+            args = []
+            if self._port:
+                args.extend(['-p', self._port])
+            if self._user:
+                args.extend(['-u', self._user])
+            if self._password:
+                args.extend(['-P', self._password])
+            args.extend(['user', '-o', name])
+            output = twisted.internet.utils.getProcessOutput(self._p4bin, args)
+            deferred = twisted.internet.defer.waitForDeferred(output)
+            yield deferred
+            result = deferred.getResult()
+
+            for line in result.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                match = self._email_re.match(line)
+                if match:
+                    yield match.group('email')
+                    return
+
+            yield name
+    return _Lookup(scope.get_interpolated('p4_common_p4port'),
+                   scope.get_interpolated('p4_common_p4user'),
+                   scope.get_interpolated('p4_common_p4passwd'),
+                   scope.get_interpolated('p4_poll_p4bin'))
 
 class _Renderer(object):
     zope.interface.implements(buildbot.interfaces.IRenderable)
