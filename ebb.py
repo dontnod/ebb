@@ -50,8 +50,6 @@ import twisted.internet.defer
 
 import zope.interface
 
-_INDENT = 0
-
 class Scope(object):
     ''' Config node : inherit parent config values '''
 
@@ -230,10 +228,7 @@ class Scope(object):
     def build(self, config):
         ''' Builds this node '''
         for child in self.children:
-            global _INDENT
-            _INDENT += 1
             child.build(config)
-            _INDENT -= 1
         self._build(config)
 
     @abc.abstractmethod
@@ -307,10 +302,6 @@ class Scope(object):
                 args.append(kwargs[name])
                 del kwargs[name]
 
-
-        print '    ' * _INDENT + buildbot_class.__name__
-        for key, value in kwargs.iteritems():
-            print '    ' * _INDENT + '  %s : %s' % (key, value)
         return buildbot_class(*args, **kwargs)
 
 class Config(Scope):
@@ -843,7 +834,7 @@ class Command(Step):
     ''' Executes a shell command '''
     def __init__(self, name, command):
         super(Command, self).__init__(name)
-        self._command = shlex.split(command)
+        self._command = shlex.split(command.strip())
 
     @staticmethod
     def config(want_stdout=None, want_stderr=None, lazylogfiles=None,
@@ -881,6 +872,7 @@ class Command(Step):
         step_args['command'] = self.render(self._command)
         return self._build_class(buildbot.steps.shell.ShellCommand,
                                  'shell_command',
+                                 rendered=['shell_command_logfiles'],
                                  additional=step_args)
 
 class _ChangeFilter(object):
@@ -1014,6 +1006,8 @@ class _Renderer(object):
         if revision is None:
             revision = "no_revision"
 
+        for key, value in props.asDict().iteritems():
+            format_vars[key] = value[0]
         format_vars['got_revision'] = revision
         format_vars['revisions'] = ' '.join([change.revision for change in props.getBuild().allChanges()])
         return self._fmt.format(**format_vars)
