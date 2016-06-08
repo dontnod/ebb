@@ -50,6 +50,8 @@ import twisted.internet.defer
 
 import zope.interface
 
+_INDENT = 0
+
 class Scope(object):
     ''' Config node : inherit parent config values '''
 
@@ -228,7 +230,10 @@ class Scope(object):
     def build(self, config):
         ''' Builds this node '''
         for child in self.children:
+            global _INDENT
+            _INDENT += 1
             child.build(config)
+            _INDENT -= 1
         self._build(config)
 
     @abc.abstractmethod
@@ -302,6 +307,10 @@ class Scope(object):
                 args.append(kwargs[name])
                 del kwargs[name]
 
+
+        print '    ' * _INDENT + buildbot_class.__name__
+        for key, value in kwargs.iteritems():
+            print '    ' * _INDENT + '  %s : %s' % (key, value)
         return buildbot_class(*args, **kwargs)
 
 class Config(Scope):
@@ -406,10 +415,14 @@ class Config(Scope):
     def get_slave_list(self, *tags):
         """ Returns declared slaves matching *all* given tags """
         result = []
-        tags = set(*tags)
+        tagset = set()
+        for tag in tags:
+            tagset.add(tag)
         for slave in self._slaves:
-            slave_tags = set(slave.get_interpolated('_slave_tags', []))
-            if len(tags - slave_tags) == 0:
+            slave_tagset = set()
+            for tag in slave.get_interpolated('_slave_tags', []):
+                slave_tagset.add(tag)
+            if len(tagset - slave_tagset) == 0:
                 slave_name = slave.get_interpolated('slave_name')
                 result.append(slave_name)
         return result
@@ -495,6 +508,7 @@ class Builder(Scope):
         self._accept_regex = None
         self._reject_regex = None
         self._factory = buildbot.process.factory.BuildFactory()
+        self._local_slave_tags = []
 
         self.properties['builder_name'] = name
         if category is not None:
@@ -505,6 +519,10 @@ class Builder(Scope):
     def add_step(self, step):
         ''' Adds a step to this builder '''
         self._factory.addStep(step)
+
+    def add_local_slave_tags(self, *tags):
+        ''' Adds tags not defined on the scope '''
+        self._local_slave_tags.extend(tags)
 
     def trigger_on_change(self, accept_regex, reject_regex=None):
         ''' Triggers this build on change from source control '''
@@ -576,7 +594,7 @@ class Builder(Scope):
     @staticmethod
     def add_slave_tags(*tags):
         ''' Adds builder tags to current scope '''
-        Scope.append('_builder_slave_tags', tags)
+        Scope.append('_builder_slave_tags', *tags)
 
     @staticmethod
     def add_env_variable(name, value):
@@ -586,7 +604,7 @@ class Builder(Scope):
     @staticmethod
     def add_tags(*tags):
         ''' Adds a tag to a builder '''
-        Scope.append('builder_tags', tags)
+        Scope.append('builder_tags', *tags)
 
     @staticmethod
     def add_property(name, value):
@@ -595,6 +613,7 @@ class Builder(Scope):
 
     def _build(self, config):
         slave_tags = self.get_interpolated('_builder_slave_tags', [])
+        slave_tags = slave_tags + self._local_slave_tags
         slavenames = config.get_slave_list(*slave_tags)
 
         # TODO locks = get_locks('job', config, scope)
@@ -974,6 +993,9 @@ class _Renderer(object):
     def __init__(self, fmt, scope):
         self._fmt = fmt
         self._scope = scope
+
+    def __repr__(self):
+        return self._fmt
 
     #pylint: disable=invalid-name,missing-docstring
     def getRenderingFor(self, props):
