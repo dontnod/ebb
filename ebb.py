@@ -314,11 +314,13 @@ class Config(Scope):
         self._slaves = []
         self._triggerables = {}
         self._locks = {}
+        self._builders_scopes = {}
         self.buildbot_config['builders'] = []
         self.buildbot_config['schedulers'] = []
         self.buildbot_config['slaves'] = []
         self.buildbot_config['status'] = []
         self.buildbot_config['change_source'] = []
+        self.buildbot_config['prioritizeBuilders'] = self._prioritize_builders
 
     @staticmethod
     def db(url, poll_interval=None):
@@ -403,6 +405,11 @@ class Config(Scope):
         ''' Adds a slave for later tag filtering '''
         self._slaves.append(slave)
 
+    def add_builder(self, builder, scope):
+        ''' Adds a builder to this config '''
+        self._builders_scopes[builder.name] = scope
+        self.buildbot_config['builders'].append(builder)
+
     def get_slave_list(self, *tags):
         """ Returns declared slaves matching *all* given tags """
         result = []
@@ -451,6 +458,12 @@ class Config(Scope):
         web_status = buildbot.status.html.WebStatus(http_port=http_port,
                                                     authz=authz)
         self.buildbot_config['status'].append(web_status)
+
+    def _prioritize_builders(self, _, builders):
+        def _get_priority(builder):
+            return self._builders_scopes[builder.name].get('_builder_priority', 0)
+        builders.sort(key=_get_priority, reverse=True)
+        return builders
 
 class Slave(Scope):
     ''' Creates a new buildbot slave '''
@@ -547,7 +560,8 @@ class Builder(Scope):
                only_important=None,
                tree_stable_timer=None,
                file_is_important=None,
-               project=None):
+               project=None,
+               priority=None):
         ''' Sets builder config values '''
         Scope.set_checked('builder_name', name, basestring)
         Scope.set_checked('builder_category', category, basestring)
@@ -562,6 +576,7 @@ class Builder(Scope):
         Scope.set_checked('scheduler_treeStableTimer', tree_stable_timer, int)
         Scope.set_checked('scheduler_fileIsImportant', file_is_important, None)
         Scope.set_checked('change_filter_project', project, basestring)
+        Scope.set_checked('_builder_priority', priority, int)
 
     @staticmethod
     def mail_config(from_address=None,
@@ -629,7 +644,8 @@ class Builder(Scope):
                                     'builder',
                                     additional=args)
 
-        config.buildbot_config['builders'].append(builder)
+        config.add_builder(builder, self)
+
         self._add_single_branch_scheduler(config)
         self._add_nightly_scheduler(config)
         self._add_force_scheduler(config)
