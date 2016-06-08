@@ -668,7 +668,9 @@ class Builder(Scope):
         args = {'name' : '%s nightly scheduler' % builder_name,
                 'builderNames' : [builder_name],
                 'branch' : None} #We don't use branches the way buildbot expects it
-        args.update(self._nightly)
+        for key, value in self._nightly.iteritems():
+            if value is not None:
+                args[key] = value
 
         scheduler_class = buildbot.schedulers.timed.Nightly
         scheduler = self._build_class(scheduler_class,
@@ -968,7 +970,9 @@ class Trigger(Step):
                 'builderNames' : self._builder_names}
 
         if self._nightly is not None:
-            args.update(self._nightly)
+            for key, value in self._nightly.iteritems():
+                if value is not None:
+                    args[key] = value
             scheduler_class = buildbot.schedulers.timed.NightlyTriggerable
         else:
             scheduler_class = buildbot.schedulers.triggerable.Triggerable
