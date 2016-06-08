@@ -981,7 +981,7 @@ class Trigger(Step):
 
         config.buildbot_config['schedulers'].append(scheduler)
 
-        step_args['schedulerNames'] = scheduler.name
+        step_args['schedulerNames'] = [scheduler.name]
 
         del step_args['workdir']
         return self._build_class(buildbot.steps.trigger.Trigger, 'trigger',
@@ -1063,7 +1063,7 @@ class _Renderer(object):
 
         for key, value in props.asDict().iteritems():
             format_vars[key] = value[0]
-        format_vars['got_revision'] = revision
+
         format_vars['revisions'] = ' '.join([change.revision for change in props.getBuild().allChanges()])
         return self._fmt.format(**format_vars)
 
