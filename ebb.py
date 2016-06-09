@@ -26,6 +26,7 @@ import cgi
 import contextlib
 import re
 import shlex
+import time
 
 import buildbot.buildslave
 import buildbot.changes
@@ -41,6 +42,7 @@ import buildbot.status.html
 import buildbot.status.mail
 import buildbot.status.web.auth
 import buildbot.status.web.authz
+import buildbot.status.words
 import buildbot.steps.shell
 import buildbot.steps.source.p4
 import buildbot.steps.trigger
@@ -394,6 +396,28 @@ class Config(Scope):
         Scope.set_checked('web_status_password', password, str)
 
     @staticmethod
+    def irc_status(server, nick, password=None):
+        ''' Sets web status configuration '''
+        Scope.set_checked('irc_server', server, str)
+        Scope.set_checked('irc_nick', nick, str)
+        Scope.set_checked('irc_password', password, str)
+
+    @staticmethod
+    def add_irc_channel(channel, password=None):
+        ''' Adds a channel to join for buildbot '''
+        args = {'channel' : channel}
+        if password is not None:
+            args['password'] = password
+
+        Scope.append('irc_channels', args)
+
+    @staticmethod
+    def set_irc_notify_events(*events):
+        ''' Adds events to notify via irc '''
+        for event in events:
+            Scope.update('irc_notify_events', event, 1)
+
+    @staticmethod
     def add_renderer_handlers(*handlers):
         ''' Add rendering handlers that can udpate rendering arguments at build
             time '''
@@ -438,6 +462,7 @@ class Config(Scope):
 
         conf_dict.update(self._get_prefixed_properties('base'))
         self._add_web_status()
+        self._add_irc_status()
 
     def _add_web_status(self):
         http_port = self.get('web_status_port')
@@ -461,6 +486,13 @@ class Config(Scope):
         web_status = buildbot.status.html.WebStatus(http_port=http_port,
                                                     authz=authz)
         self.buildbot_config['status'].append(web_status)
+
+    def _add_irc_status(self):
+        status = self._build_class(buildbot.status.words.IRC,
+                                   'irc',
+                                   positional=('server', 'nick', 'channels'))
+        self.buildbot_config['status'].append(status)
+
 
     def _prioritize_builders(self, _, builders):
         def _get_priority(builder):
@@ -1112,18 +1144,23 @@ class _HtmlMailFormatter(object):
         template = self._scope.get_interpolated('_mail_template',
                                                 'mail_template.html')
         mail_type = self._scope.get_interpolated('_mail_type', 'html')
+        (start, end) = build.getTimes()
+
+        args = {'results_string' : buildbot.status.builder.Results[results],
+                'build_slave' : build.getSlavename(),
+                'name' : name,
+                'build' : build,
+                'cgi' : cgi,
+                'master_status' : master_status,
+                'start' : time.ctime(start),
+                'end' : time.ctime(end),
+                'elapsed' : buildbot.util.formatInterval(end - start)}
         try:
             loader = jinja2.FileSystemLoader(template_directory,
                                              encoding='utf-8')
             env = jinja2.Environment(loader=loader)
             template = env.get_template('mail_template.html')
 
-            args = {'result_string' : buildbot.status.builder.Results[results],
-                    'build_slave' : build.getSlavename(),
-                    'name' : name,
-                    'build' : build,
-                    'cgi' : cgi,
-                    'master_status' : master_status}
             #pylint: disable=no-member
             body = template.render(**args)
         except Exception as ex:
