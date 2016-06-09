@@ -22,8 +22,9 @@
 ''' Easier buildbot configuration. '''
 
 import abc
-import re
+import cgi
 import contextlib
+import re
 import shlex
 
 import buildbot.buildslave
@@ -44,6 +45,8 @@ import buildbot.steps.shell
 import buildbot.steps.source.p4
 import buildbot.steps.trigger
 import buildbot.util
+
+import jinja2
 
 import twisted.internet.utils
 import twisted.internet.defer
@@ -590,7 +593,10 @@ class Builder(Scope):
                     smtp_user=None,
                     smtp_password=None,
                     lookup=None,
-                    message_formatter=None):
+                    message_formatter=None,
+                    template_directory=None,
+                    template=None,
+                    body_type=None):
         ''' Sets mail related settings '''
         Scope.set_checked('mail_fromaddr', from_address, str)
         Scope.set_checked('mail_sendToInterestedUsers',
@@ -604,7 +610,11 @@ class Builder(Scope):
         Scope.set_checked('mail_smtpUser', smtp_user, str)
         Scope.set_checked('mail_smtpPassword', smtp_password, str)
         Scope.set_checked('mail_lookup', lookup, None)
-        Scope.set_checked('mail_messageFormatter', message_formatter, None)
+
+        Scope.set_checked('_mail_message_formatter', message_formatter, None)
+        Scope.set_checked('_mail_template_directory', template_directory, None)
+        Scope.set_checked('_mail_template', template, None)
+        Scope.set_checked('_mail_body_type', body_type, None)
 
     @staticmethod
     def add_extra_recipients(*emails):
@@ -709,9 +719,17 @@ class Builder(Scope):
         extra_recipients = self.get_interpolated('mail_extraRecipients')
         send_mail = self.get_interpolated('mail_sendToInterestedUsers')
         if extra_recipients or send_mail:
+
+            formatter = self.get('_mail_message_formatter')
+            if formatter is None:
+                formatter = _HtmlMailFormatter(self)
+
+            args = {'messageFormatter': formatter,
+                    'builders': [self.get_interpolated('builder_name')]}
+
             mail_status = self._build_class(buildbot.status.mail.MailNotifier,
                                             'mail',
-                                            raw=['mail_messageFormatter'])
+                                            additional=args)
             config.buildbot_config['status'].append(mail_status)
 
 class Repository(Scope):
@@ -885,14 +903,14 @@ class Command(Step):
         self._command = shlex.split(command.strip())
 
     @staticmethod
-    def config(want_stdout=None, want_stderr=None, lazylogfiles=None,
+    def config(want_stdout=None, want_stderr=None, lazy_log_files=None,
                max_time=None, interrupt_signal=None, sigterm_time=None,
                initial_stdin=None):
         Scope.set_checked('shell_command_want_stdout', want_stdout, bool)
         Scope.set_checked('shell_command_want_stderr', want_stderr, bool)
-        Scope.set_checked('shell_command_lazylogfiles', lazylogfiles, bool)
+        Scope.set_checked('shell_command_lazylogfiles', lazy_log_files, bool)
         Scope.set_checked('shell_command_maxTime', max_time, int)
-        assert interrupt_signal in ['KILL', 'TERM']
+        assert interrupt_signal in [None, 'KILL', 'TERM']
         Scope.set_checked('shell_command_interruptSignal', interrupt_signal, str)
         Scope.set_checked('shell_command_sigterm_time', sigterm_time, int)
         Scope.set_checked('shell_command_initialStdin', initial_stdin, int)
@@ -1082,4 +1100,35 @@ class _Renderer(object):
 
         format_vars['revisions'] = ' '.join([change.revision for change in props.getBuild().allChanges()])
         return self._fmt.format(**format_vars)
+
+class _HtmlMailFormatter(object):
+    def __init__(self, scope):
+        self._scope = scope
+
+    def __call__(self, _, name, build, results, master_status):
+        body = ''
+        template_directory = self._scope.get_interpolated('template_directory',
+                                                          'templates')
+        template = self._scope.get_interpolated('_mail_template',
+                                                'mail_template.html')
+        mail_type = self._scope.get_interpolated('_mail_type', 'html')
+        try:
+            loader = jinja2.FileSystemLoader(template_directory,
+                                             encoding='utf-8')
+            env = jinja2.Environment(loader=loader)
+            template = env.get_template('mail_template.html')
+
+            args = {'result_string' : buildbot.status.builder.Results[results],
+                    'build_slave' : build.getSlavename(),
+                    'name' : name,
+                    'build' : build,
+                    'cgi' : cgi,
+                    'master_status' : master_status}
+            #pylint: disable=no-member
+            body = template.render(**args)
+        except Exception as ex:
+            body = 'An exception occured during message rendering : %s' % ex.message
+            raise ex
+        return {'body' : body,
+                'type' : mail_type}
 
