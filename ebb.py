@@ -450,6 +450,16 @@ class Config(Scope):
             if len(tagset - slave_tagset) == 0:
                 slave_name = slave.get_interpolated('slave_name')
                 result.append(slave_name)
+        if len(result) == 0:
+            print 'Error : no slave found builder with tags %s' % tagset
+            for slave in self._slaves:
+                slave_tagset = set()
+                for tag in slave.get_interpolated('_slave_tags', []):
+                    slave_tagset.add(tag)
+                args = (slave.get_interpolated('slave_name'),
+                        tagset - slave_tagset)
+                print 'Slave %s is missing tags %s' % args
+
         return result
 
     def _build(self, config):
