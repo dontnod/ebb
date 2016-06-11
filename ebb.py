@@ -685,7 +685,7 @@ class Builder(Scope):
 
     def _build(self, config):
         slave_tags = self.get_interpolated('_builder_slave_tags', [])
-        slave_tags = slave_tags + self._local_slave_tags
+        slave_tags = slave_tags + self.interpolate(self._local_slave_tags)
         slavenames = config.get_slave_list(*slave_tags)
 
         # TODO locks = get_locks('job', config, scope)
