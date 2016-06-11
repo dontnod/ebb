@@ -796,19 +796,19 @@ class Repository(Scope):
         ''' Returns a step to sync this repository '''
 
     @abc.abstractmethod
-    def _build_change_source(self, config, args):
+    def _build_change_sources(self, config, args):
         ''' Creates a ChangeSource for this repository '''
 
     def _build(self, config):
         args = self._get_prefixed_properties('change_source')
-        change_source = self._build_change_source(config, args)
+        for change_source in self._build_change_sources(config, args):
 
-        # XXX: this attribute works around a bug in buildbot that would
-        # cause it to only trigger rebuilds for the first project using
-        # that source
-        change_source.compare_attrs.append('project')
+            # XXX: this attribute works around a bug in buildbot that would
+            # cause it to only trigger rebuilds for the first project using
+            # that source
+            change_source.compare_attrs.append('project')
 
-        config.buildbot_config['change_source'].append(change_source)
+            config.buildbot_config['change_source'].append(change_source)
 
 class P4(Repository):
     ''' P4 handling '''
@@ -840,7 +840,7 @@ class P4(Repository):
                                  rendered=['p4_sync_p4client'],
                                  additional=step_args)
 
-    def _build_change_source(self, config, args):
+    def _build_change_sources(self, config, args):
         paths_to_poll = []
         for (depot_path, _) in self.get('p4_sync_p4viewspec', []):
             if depot_path.startswith('//'):
@@ -851,6 +851,7 @@ class P4(Repository):
         for base in paths_to_poll:
             split_file = lambda branchfile: (None, branchfile)
             args['split_file'] = split_file
+            args['p4base'] = base
             project_name = self.get_interpolated('project_name')
             if project_name is not None:
                 args['project'] = project_name
@@ -858,7 +859,7 @@ class P4(Repository):
             p4 = self._build_class(buildbot.changes.p4poller.P4Source,
                                    ('p4_common', 'p4_poll'),
                                    additional=args)
-            return p4
+            yield p4
 
 class Step(Scope):
     ''' Build step '''
