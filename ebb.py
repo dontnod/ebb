@@ -851,7 +851,7 @@ class P4(Repository):
         for base in paths_to_poll:
             split_file = lambda branchfile: (None, branchfile)
             args['split_file'] = split_file
-            args['p4base'] = base
+            args['p4base'] = '//' + base
             project_name = self.get_interpolated('project_name')
             if project_name is not None:
                 args['project'] = project_name
