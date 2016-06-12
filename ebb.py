@@ -951,7 +951,7 @@ class Sync(Step):
                log_environ=None):
         ''' Common sync steps config '''
         Scope.set_checked('sync_mode', mode, str)
-        assert mode in ['incremental', 'full']
+        assert mode in ['incremental', 'full', None]
         Scope.set_checked('sync_alwaysUseLatest', always_use_latest, bool)
         Scope.set_checked('sync_retry', retry, tuple)
         assert len(retry) == 2
