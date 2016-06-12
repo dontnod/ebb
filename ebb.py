@@ -1100,7 +1100,7 @@ def p4_email_lookup(scope):
             self._port = str(port)
             self._user = user
             self._password = password
-            self._p4bin = p4bin if p4bin is not None else 'p4'
+            self._p4bin = p4bin if p4bin is not None else '/usr/local/bin/p4'
 
             assert isinstance(self._port, str)
             assert isinstance(self._user, str)
