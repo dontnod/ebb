@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# C pyright © 2014—2016 Dontnod Entertainment
+# Copyright © 2014—2016 Dontnod Entertainment
 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -124,34 +124,37 @@ class Scope(object):
             func(*args, **kwargs)
             yield scope
 
-    def get(self, name, default=None):
+    def get(self, name, default=None, public_only=False):
         ''' Search for a property up the tree and returns the first occurence
         '''
         assert isinstance(name, basestring)
         if name not in self.properties:
-            if self._parent is not None:
-                return self._parent.get(name, default)
-            return default
+            value = None
+        else:
+            value = self.properties[name]
 
-        value = self.properties[name]
+        for scope in self._get_related_scopes(public_only):
+            if isinstance(value, list):
+                scope_value = scope.get(name, public_only=True)
+                if scope_value is not None:
+                    value = value[:]
+                    assert isinstance(scope_value, list)
+                    value.extend(scope_value)
 
-        if isinstance(value, list):
-            if self._parent is not None:
-                parent_value = self._parent.get(name, default)
-                if parent_value is not None:
-                    assert isinstance(parent_value, list)
-                    return value + parent_value
+            elif isinstance(value, dict):
+                scope_value = scope.get(name, public_only=True) 
+                value = value.copy()
+                if scope_value is not None:
+                    assert isinstance(scope_value, dict)
+                    value.update(scope_value)
 
-        elif isinstance(value, dict):
-            if self._parent is not None:
-                parent_value = self._parent.get(name, default)
-                if parent_value is not None:
-                    assert isinstance(parent_value, dict)
-                    parent_value.update(value)
-                    return parent_value
-            return value.copy()
+            elif value is  None:
+                value = scope.get(name, public_only=True)
 
-        return value
+            else:
+                return value
+
+        return value if value is not None else default
 
     def get_interpolated(self, name, default=None):
         ''' Search for a property up the tree, and returns it's value
@@ -207,12 +210,12 @@ class Scope(object):
 
         return value
 
-    def get_interpolation_values(self):
+    def get_interpolation_values(self, public_only=False):
         ''' Parses the tree bottom-up, getting string property values '''
-        if self._parent is None:
-            result = {}
-        else:
-            result = self._parent.get_interpolation_values()
+        result = {}
+        for scope in self._get_related_scopes(public_only):
+            scope_values = scope.get_interpolation_values(True)
+            result.update(scope_values)
 
         for key, value in self.properties.iteritems():
             if isinstance(value, basestring):
@@ -236,23 +239,31 @@ class Scope(object):
             child.build(config)
         self._build(config)
 
-    @abc.abstractmethod
-    def _build(self, config):
-        pass
+    def _get_related_scopes(self, public_only):
+        if self._parent is not None:
+            yield self._parent
 
-    def get_properties_names(self, prefix):
+        if not public_only:
+            for it in self.children:
+                if isinstance(it, Private):
+                    yield it
+
+    def get_properties_names(self, prefix, public_only=False):
         ''' Returs all properties defined on this node and parent starting
             with given prefix '''
-        if self._parent is not None:
-            result = self._parent.get_properties_names(prefix)
-        else:
-            result = set()
+        result = set()
+        for scope in self._get_related_scopes(public_only):
+            result = result | scope.get_properties_names(prefix, True)
 
         for key, _ in self.properties.iteritems():
             if key.startswith(prefix + '_'):
                 result.add(key)
 
         return result
+
+    @abc.abstractmethod
+    def _build(self, config):
+        pass
 
     def _get_prefixed_properties(self, prefixes, rendered=None, raw=None):
         result = {}
@@ -308,6 +319,17 @@ class Scope(object):
                 del kwargs[name]
 
         return buildbot_class(*args, **kwargs)
+
+class Private(Scope):
+    ''' Defines not inherited values on the parent scope '''
+    def __init__(self):
+        super(Private, self).__init__()
+
+    def _get_related_scopes(self, public_only):
+        return []
+
+    def _build(self, config):
+        pass
 
 class Config(Scope):
     ''' Root config node '''
@@ -932,7 +954,7 @@ class Sync(Step):
         Scope.set_checked('sync_logEnviron', log_environ, bool)
 
     def _get_step(self, config, step_args):
-        repos = self.get('source_control_repositories')
+        repos = self.get_interpolated('source_control_repositories')
         if repos is None or self._repo_name not in repos:
             msg = 'Unable to find repository %s in scope.' % self._repo_name
             raise Exception(msg)
@@ -1060,7 +1082,8 @@ class Trigger(Step):
 
         step_args['schedulerNames'] = [scheduler.name]
 
-        del step_args['workdir']
+        if 'workdir' in step_args:
+            del step_args['workdir']
         return self._build_class(buildbot.steps.trigger.Trigger, 'trigger',
                                  additional=step_args)
 
