@@ -133,26 +133,30 @@ class Scope(object):
         else:
             value = self.properties[name]
 
-        for scope in self._get_related_scopes(public_only):
-            if isinstance(value, list):
-                scope_value = scope.get(name, public_only=True)
-                if scope_value is not None:
-                    value = value[:]
-                    assert isinstance(scope_value, list)
-                    value.extend(scope_value)
-
-            elif isinstance(value, dict):
-                scope_value = scope.get(name, public_only=True) 
-                value = value.copy()
-                if scope_value is not None:
-                    assert isinstance(scope_value, dict)
-                    value.update(scope_value)
-
-            elif value is  None:
-                value = scope.get(name, public_only=True)
-
-            else:
+        if value is not None:
+            if not isinstance(value, list) and not isinstance(value, dict):
                 return value
+
+        for scope in self._get_related_scopes(public_only):
+            scope_value = scope.get(name, public_only=True)
+            if isinstance(scope_value, list):
+                if value is not None:
+                    assert isinstance(value, list)
+                    scope_value.extend(value)
+
+            elif isinstance(scope_value, dict):
+                if value is not None:
+                    assert isinstance(value, dict)
+                    scope_value.update(value)
+
+            if scope_value is not None:
+                value = scope_value
+
+        if isinstance(value, list):
+            return value[:]
+
+        elif isinstance(value, dict):
+            return value.copy()
 
         return value if value is not None else default
 
