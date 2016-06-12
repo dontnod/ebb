@@ -1097,10 +1097,16 @@ def p4_email_lookup(scope):
     class _Lookup(buildbot.util.ComparableMixin):
         zope.interface.implements(buildbot.interfaces.IEmailLookup)
         def __init__(self, port, user, password, p4bin):
-            self._port = port
+            self._port = str(port)
             self._user = user
             self._password = password
-            self._p4bin = p4bin
+            self._p4bin = p4bin if p4bin is not None else 'p4'
+
+            assert isinstance(self._port, str)
+            assert isinstance(self._user, str)
+            assert isinstance(self._password, str)
+            assert isinstance(self._p4bin, str)
+
             self._email_re = re.compile(r"Email:\s+(?P<email>\S+@\S+)\s*$")
 
         @twisted.internet.defer.deferredGenerator
