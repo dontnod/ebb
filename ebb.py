@@ -857,7 +857,7 @@ class P4(Repository):
         Scope.set_checked('p4_sync_p4client', client, str)
         Scope.set_checked('p4_poll_p4bin', binary, str)
         Scope.set_checked('p4_poll_encoding', encoding, str)
-        Scope.set_checked('p4_poll_server_tz', timezone, str)
+        Scope.set_checked('p4_poll_server_tz', timezone, None)
 
     @staticmethod
     def add_views(*views):
