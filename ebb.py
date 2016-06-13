@@ -449,6 +449,16 @@ class Config(Scope):
             time '''
         Scope.append('config_renderer_handlers', *handlers)
 
+    def get_builder(self, name):
+        ''' Returns a declared Builder '''
+        return self._builders_scopes[name]
+
+    def get_slave(self, name):
+        ''' Returns a declared slave '''
+        for slave in self._slaves:
+            if slave.get_interpolated('slave_name') == name:
+                return slave
+
     def build_config(self):
         ''' Builds the buildbot config '''
         self.build(self)
@@ -583,7 +593,6 @@ class Builder(Scope):
         self._accept_regex = None
         self._reject_regex = None
         self._factory = buildbot.process.factory.BuildFactory()
-        self._local_slave_tags = []
         self._nightly = None
 
         self.properties['builder_name'] = name
@@ -595,10 +604,6 @@ class Builder(Scope):
     def add_step(self, step):
         ''' Adds a step to this builder '''
         self._factory.addStep(step)
-
-    def add_local_slave_tags(self, *tags):
-        ''' Adds tags not defined on the scope '''
-        self._local_slave_tags.extend(tags)
 
     def trigger_on_change(self, accept_regex, reject_regex=None):
         ''' Triggers this build on change from source control '''
@@ -644,7 +649,7 @@ class Builder(Scope):
         Scope.set_checked('builder_mergeRequests', merge_requests, None)
         Scope.set_checked('_force_scheduler_enabled', forcable, bool)
         Scope.set_checked('scheduler_onlyImportant', only_important, bool)
-        Scope.set_checked('scheduler_treeStableTimer', tree_stable_timer, int)
+        Scope.set_checked('branch_scheduler_treeStableTimer', tree_stable_timer, int)
         Scope.set_checked('scheduler_fileIsImportant', file_is_important, None)
         Scope.set_checked('change_filter_project', project, basestring)
         Scope.set_checked('_builder_priority', priority, int)
@@ -711,7 +716,6 @@ class Builder(Scope):
 
     def _build(self, config):
         slave_tags = self.get_interpolated('_builder_slave_tags', [])
-        slave_tags = slave_tags + self.interpolate(self._local_slave_tags)
         slavenames = config.get_slave_list(*slave_tags)
 
         # TODO locks = get_locks('job', config, scope)
@@ -720,6 +724,7 @@ class Builder(Scope):
 
         builder = self._build_class(buildbot.config.BuilderConfig,
                                     'builder',
+                                    raw=['builder_nextSlave'],
                                     additional=args)
 
         config.add_builder(builder, self)
@@ -751,7 +756,7 @@ class Builder(Scope):
 
         scheduler_class = buildbot.schedulers.basic.SingleBranchScheduler
         scheduler = self._build_class(scheduler_class,
-                                      'scheduler',
+                                      ('scheduler', 'branch_scheduler'),
                                       additional=args)
         config.buildbot_config['schedulers'].append(scheduler)
 
