@@ -741,8 +741,9 @@ class Builder(Scope):
     def _add_single_branch_scheduler(self, config):
         if self._accept_regex is None:
             return
-        args = {'filter_fn' : _ChangeFilter(self._accept_regex,
-                                            self._reject_regex)}
+        args = {'filter_fn' : _ChangeFilter(self.interpolate(self._accept_regex),
+                                            self.interpolate(self._reject_regex))
+               }
 
         change_filter = self._build_class(buildbot.changes.filter.ChangeFilter,
                                           'change_filter',
