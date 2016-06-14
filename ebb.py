@@ -1027,12 +1027,19 @@ class _ChangeFilter(object):
     def __call__(self, change):
         if 'buildbot' in change.who.lower():
             return False
+        print '[FILTER] Filtering change %s ' % change
         for file_it in change.files:
+            args = (file_it, self._accept)
+            print ' [FILTER] * Matching %s against accept %s' % args
             if re.match(self._accept, file_it) is not None:
                 if self._reject is not None:
                     if re.match(self._reject, file_it) is not None:
+                        args = (file_it, self._reject)
+                        print '[FILTER] * Matching %s against reject %s' % args
                         continue
+                print '[FILTER] * Accepting change'
                 return True
+        print '[FILTER] * Rejecting Change'
         return False
 
 class Trigger(Step):
