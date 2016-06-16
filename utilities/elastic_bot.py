@@ -58,7 +58,7 @@ def main():
     return 0
 
 def _init_logging(verbose):
-    _LOGGER.setLevel(logging.DEBUG if verbose else logging.info)
+    _LOGGER.setLevel(logging.DEBUG if verbose else logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter(fmt='[%(asctime)s] [%(levelname)s] %(message)s',
                                   datefmt='%Y-%m-%d %H:%M:%S')
