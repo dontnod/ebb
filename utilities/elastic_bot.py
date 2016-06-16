@@ -299,8 +299,6 @@ def _get_build_document(tag_patterns, build_properties, builder_name, build):
                     if trigger_date < change.when:
                         trigger_date = change.when
 
-    trigger_date = trigger_date - 7400
-
     if has_changes:
         document['waiting_duration'] = build.started - trigger_date
         document['total_duration'] = build.finished  - trigger_date
