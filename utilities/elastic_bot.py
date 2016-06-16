@@ -44,38 +44,24 @@ def main():
     args = _load_arguments()
     _init_logging(args.verbose)
     database = elasticsearch.Elasticsearch(args.nodes)
-    loaded_builders = {}
     actions = _get_bulk_actions(database,
                                 args.index,
                                 args.builders_dir,
-                                args.overwrite,
-                                args.tag_pattern,
-                                args.build_properties,
-                                loaded_builders)
+                                args.overwrite)
 
     bulk = elasticsearch.helpers.parallel_bulk
     error = False
     for success, result in bulk(database, actions, thread_count=args.threads):
-        object_id = result['index']['_id']
         if not success:
-            error = True
-            if object_id in loaded_builders:
-                _LOGGER.error('Error indexing build %s',
-                              loaded_builders[object_id])
-            else:
-                _LOGGER.error('Error indexing object %s', object_id)
-        else:
-            if object_id in loaded_builders:
-                _LOGGER.info('Indexed build %s', loaded_builders[object_id])
-        if object_id in loaded_builders:
-            del loaded_builders[object_id]
+            _LOGGER.error('Error indexing object %s', result['index']['_id'])
 
     return 1 if error else 0
 
 def _init_logging(verbose):
     _LOGGER.setLevel(logging.DEBUG if verbose else logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(fmt='[%(asctime)s] [%(levelname)s] %(message)s',
+    formatter = logging.Formatter(fmt=('[%(asctime)s] [%(levelname)s] '
+                                       '%(message)s'),
                                   datefmt='%Y-%m-%d %H:%M:%S')
     handler.setFormatter(formatter)
     _LOGGER.addHandler(handler)
@@ -116,31 +102,9 @@ def _load_arguments():
                         default=1,
                         help=('Number of database threads to create.'))
 
-    parser.add_argument('--build-properties',
-                        type=str,
-                        nargs='*',
-                        default=[],
-                        help=('Build properties add to each build document'))
-
-    parser.add_argument('--tag-pattern',
-                        type=str,
-                        metavar=('<pattern>', '<tag>'),
-                        nargs=2,
-                        action='append',
-                        default=[],
-                        help=('Adds a tag to a build or step if one of his '
-                              'the specified properties matches the pattern'))
-
     return parser.parse_args()
 
-def _get_bulk_actions(database,
-                      index,
-                      builders_dir,
-                      overwrite,
-                      tag_patterns,
-                      build_properties,
-                      loaded_builders):
-
+def _get_bulk_actions(database, index, builders_dir, overwrite):
     last_builds = {} if overwrite else _get_last_builds(database, index)
 
     for builder_name, builder_dir in _discover_builders(builders_dir):
@@ -151,10 +115,7 @@ def _get_bulk_actions(database,
 
         for build in _load_builds(builder_name, builder_dir, last_build):
             build_id = _get_id(builder_name, build.number)
-            build_document = _get_build_document(tag_patterns,
-                                                 build_properties,
-                                                 builder_name,
-                                                 build)
+            build_document = _get_build_document(build)
             _LOGGER.debug('Created build %s:%s document',
                           builder_name,
                           build.number)
@@ -166,10 +127,7 @@ def _get_bulk_actions(database,
                     continue
 
                 step_id = _get_id(build_id, step.step_number)
-                step_document = _get_step_document(tag_patterns,
-                                                   builder_name,
-                                                   build,
-                                                   step)
+                step_document = _get_step_document(build, step)
                 _LOGGER.debug('Created step %s:%s:%s document',
                               builder_name,
                               build.number,
@@ -178,10 +136,9 @@ def _get_bulk_actions(database,
                     _LOGGER.debug('%s : %s', key, value)
                 yield _get_action(index, 'step', step_id, step_document)
 
-            loaded_builders[build_id] = '%s:%s' % (builder_name, build.number)
             yield _get_action(index, 'build', build_id, build_document)
 
-            _LOGGER.debug('Loaded build %s:%s', builder_name, build.number)
+            _LOGGER.info('Loaded build %s:%s', builder_name, build.number)
 
 def _get_last_builds(database, index):
     body = {
@@ -276,18 +233,8 @@ def _get_id(*args):
         md5_hash.update(str(arg).encode())
     return md5_hash.hexdigest()
 
-def _get_build_document(tag_patterns, build_properties, builder_name, build):
+def _get_build_document(build):
     document = _get_document('build', build, build)
-    document['name'] = builder_name
-    document['number'] = build.number
-
-    properties_dict = build.properties.asDict()
-    for property_name in build_properties:
-        if property_name in properties_dict:
-            value = properties_dict[property_name][0]
-            document[property_name] = value
-
-    _add_tags(tag_patterns, document)
 
     trigger_date = 0
     has_changes = False
@@ -305,17 +252,15 @@ def _get_build_document(tag_patterns, build_properties, builder_name, build):
 
     return document
 
-def _get_step_document(tag_patterns, builder_name, build, step):
+def _get_step_document(build, step):
     document = _get_document('step', build, step)
-    document['builder'] = builder_name
-    document['number'] = step.step_number
-    _add_tags(tag_patterns, document)
+    document['step_name'] = step.name
+    document['step_number'] = step.step_number
     return document
 
 def _get_document(doc_type, build, build_or_step):
-    return {
+    document = {
         'type' : doc_type,
-        'slave' : build.slavename,
         'blamelist' : '-'.join(build.blamelist),
         'start' : datetime.datetime.fromtimestamp(build_or_step.started),
         'end' : datetime.datetime.fromtimestamp(build_or_step.finished),
@@ -323,15 +268,14 @@ def _get_document(doc_type, build, build_or_step):
         'result': buildbot.status.builder.Results[build_or_step.results],
     }
 
-def _add_tags(tag_patterns, document):
-    tags = []
-    for _, value in document.iteritems():
-        for pattern, tag in tag_patterns:
-            if isinstance(value, basestring) and re.match(pattern, value):
-                tags.append(tag)
+    for key, value in build.properties.asDict().iteritems():
+        if key in ['workdir', 'scheduler', 'builddir']:
+            continue
+        value = value[0]
+        if value is not None and value != '':
+            document[key] = value
 
-    if tags:
-        document['tags'] = '-'.join(tags)
+    return document
 
 def _get_action(index, doc_type, doc_id, body):
     return {
