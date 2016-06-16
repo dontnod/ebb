@@ -51,8 +51,11 @@ def main():
     bulk = elasticsearch.helpers.parallel_bulk
     error = False
     for success, result in bulk(database, actions, thread_count=args.threads):
+        doc_id = result['index']['_id']
         if not success:
-            _LOGGER.error('Error indexing object %s', result['index']['_id'])
+            _LOGGER.error('Error indexing object %s', doc_id)
+        else:
+            _LOGGER.info('Indexed item %s', doc_id)
 
     return 1 if error else 0
 
@@ -113,7 +116,7 @@ def _get_bulk_actions(database, index, builders_dir, overwrite):
             last_build = -1
 
         for build in _load_builds(builder_name, builder_dir, last_build):
-            build_id = _get_id(builder_name, build.number)
+            build_id = '_'.join([builder_name, str(build.number)])
             build_properties = _get_build_properties(build)
             _LOGGER.debug('Created build %s:%s document',
                           builder_name,
@@ -125,7 +128,7 @@ def _get_bulk_actions(database, index, builders_dir, overwrite):
                 if step.started is None:
                     continue
 
-                step_id = _get_id(build_id, step.step_number)
+                step_id = '_'.join([build_id, str(step.step_number)])
                 step_properties = _get_step_properties(build, step)
                 _LOGGER.debug('Created step %s:%s:%s document',
                               builder_name,
@@ -137,7 +140,7 @@ def _get_bulk_actions(database, index, builders_dir, overwrite):
 
             yield _get_action(index, 'build', build_id, build_properties)
 
-            _LOGGER.info('Loaded build %s:%s', builder_name, build.number)
+            _LOGGER.debug('Loaded build %s:%s', builder_name, build.number)
 
 def _get_last_builds(database, index):
     body = {
@@ -225,12 +228,6 @@ def _load_builds(builder_name, builder_dir, last_indexed_build):
                     continue
 
                 yield build
-
-def _get_id(*args):
-    result = ''
-    for arg in args:
-        result = result + str(arg)
-    return result
 
 def _get_build_properties(build):
     document = _get_properties('build', build, build)
