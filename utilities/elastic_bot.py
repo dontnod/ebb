@@ -41,21 +41,36 @@ _LOGGER = logging.getLogger('elastic-bot')
 
 def main():
     ''' Entry Point '''
-    arguments = _load_arguments()
-    _init_logging(arguments.verbose)
-    database = elasticsearch.Elasticsearch(arguments.nodes)
+    args = _load_arguments()
+    _init_logging(args.verbose)
+    database = elasticsearch.Elasticsearch(args.nodes)
+    loaded_builders = {}
     actions = _get_bulk_actions(database,
-                                arguments.index,
-                                arguments.builders_dir,
-                                arguments.overwrite,
-                                arguments.tag_pattern,
-                                arguments.build_properties)
+                                args.index,
+                                args.builders_dir,
+                                args.overwrite,
+                                args.tag_pattern,
+                                args.build_properties,
+                                loaded_builders)
 
     bulk = elasticsearch.helpers.parallel_bulk
-    for _ in bulk(database, actions, thread_count=arguments.threads):
-        pass
+    error = False
+    for success, result in bulk(database, actions, thread_count=args.threads):
+        object_id = result['index']['_id']
+        if not success:
+            error = True
+            if object_id in loaded_builders:
+                _LOGGER.error('Error indexing build %s',
+                              loaded_builders[object_id])
+            else:
+                _LOGGER.error('Error indexing object %s', object_id)
+        else:
+            if object_id in loaded_builders:
+                _LOGGER.info('Indexed build %s', loaded_builders[object_id])
+        if object_id in loaded_builders:
+            del loaded_builders[object_id]
 
-    return 0
+    return 1 if error else 0
 
 def _init_logging(verbose):
     _LOGGER.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -123,7 +138,8 @@ def _get_bulk_actions(database,
                       builders_dir,
                       overwrite,
                       tag_patterns,
-                      build_properties):
+                      build_properties,
+                      loaded_builders):
 
     last_builds = {} if overwrite else _get_last_builds(database, index)
 
@@ -145,8 +161,6 @@ def _get_bulk_actions(database,
             for key, value in build_document.iteritems():
                 _LOGGER.debug('%s : %s', key, value)
 
-            yield _get_action(index, 'build', build_id, build_document)
-
             for step in build.steps:
                 if step.started is None:
                     continue
@@ -164,7 +178,10 @@ def _get_bulk_actions(database,
                     _LOGGER.debug('%s : %s', key, value)
                 yield _get_action(index, 'step', step_id, step_document)
 
-            _LOGGER.info('Loaded build %s:%s', builder_name, build.number)
+            loaded_builders[build_id] = '%s:%s' % (builder_name, build.number)
+            yield _get_action(index, 'build', build_id, build_document)
+
+            _LOGGER.debug('Loaded build %s:%s', builder_name, build.number)
 
 def _get_last_builds(database, index):
     body = {
@@ -260,7 +277,7 @@ def _get_id(*args):
     return md5_hash.hexdigest()
 
 def _get_build_document(tag_patterns, build_properties, builder_name, build):
-    document = _get_document(build, build)
+    document = _get_document('build', build, build)
     document['name'] = builder_name
     document['number'] = build.number
 
@@ -291,14 +308,15 @@ def _get_build_document(tag_patterns, build_properties, builder_name, build):
     return document
 
 def _get_step_document(tag_patterns, builder_name, build, step):
-    document = _get_document(build, step)
+    document = _get_document('step', build, step)
     document['builder'] = builder_name
     document['number'] = step.step_number
     _add_tags(tag_patterns, document)
     return document
 
-def _get_document(build, build_or_step):
+def _get_document(doc_type, build, build_or_step):
     return {
+        'type' : doc_type,
         'slave' : build.slavename,
         'blamelist' : '-'.join(build.blamelist),
         'start' : datetime.datetime.fromtimestamp(build_or_step.started),
