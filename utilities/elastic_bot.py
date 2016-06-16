@@ -25,7 +25,6 @@
 import argparse
 import cPickle
 import datetime
-import hashlib
 import logging
 import os
 import re
@@ -115,11 +114,11 @@ def _get_bulk_actions(database, index, builders_dir, overwrite):
 
         for build in _load_builds(builder_name, builder_dir, last_build):
             build_id = _get_id(builder_name, build.number)
-            build_document = _get_build_document(build)
+            build_properties = _get_build_properties(build)
             _LOGGER.debug('Created build %s:%s document',
                           builder_name,
                           build.number)
-            for key, value in build_document.iteritems():
+            for key, value in build_properties.iteritems():
                 _LOGGER.debug('%s : %s', key, value)
 
             for step in build.steps:
@@ -127,16 +126,16 @@ def _get_bulk_actions(database, index, builders_dir, overwrite):
                     continue
 
                 step_id = _get_id(build_id, step.step_number)
-                step_document = _get_step_document(build, step)
+                step_properties = _get_step_properties(build, step)
                 _LOGGER.debug('Created step %s:%s:%s document',
                               builder_name,
                               build.number,
                               step.step_number)
-                for key, value in step_document.iteritems():
+                for key, value in step_properties.iteritems():
                     _LOGGER.debug('%s : %s', key, value)
-                yield _get_action(index, 'step', step_id, step_document)
+                yield _get_action(index, 'step', step_id, step_properties)
 
-            yield _get_action(index, 'build', build_id, build_document)
+            yield _get_action(index, 'build', build_id, build_properties)
 
             _LOGGER.info('Loaded build %s:%s', builder_name, build.number)
 
@@ -228,13 +227,13 @@ def _load_builds(builder_name, builder_dir, last_indexed_build):
                 yield build
 
 def _get_id(*args):
-    md5_hash = hashlib.md5()
+    result = ''
     for arg in args:
-        md5_hash.update(str(arg).encode())
-    return md5_hash.hexdigest()
+        result = result + str(arg)
+    return result
 
-def _get_build_document(build):
-    document = _get_document('build', build, build)
+def _get_build_properties(build):
+    document = _get_properties('build', build, build)
 
     trigger_date = 0
     has_changes = False
@@ -252,13 +251,13 @@ def _get_build_document(build):
 
     return document
 
-def _get_step_document(build, step):
-    document = _get_document('step', build, step)
+def _get_step_properties(build, step):
+    document = _get_properties('step', build, step)
     document['step_name'] = step.name
     document['step_number'] = step.step_number
     return document
 
-def _get_document(doc_type, build, build_or_step):
+def _get_properties(doc_type, build, build_or_step):
     document = {
         'type' : doc_type,
         'blamelist' : '-'.join(build.blamelist),
