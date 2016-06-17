@@ -149,10 +149,10 @@ def _get_last_builds(database, index):
         },
         "aggs" : {
             "builders": {
-                "terms": {"field": "name", 'size':0},
+                "terms": {"field": "buildername", 'size':0},
                 "aggs": {
                     "last_build": {
-                        "max": {"field": "number"}
+                        "max": {"field": "buildnumber"}
                     }
                 }
             }

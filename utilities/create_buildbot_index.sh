@@ -1,6 +1,6 @@
-curl -XDELETE 'http://localhost:9200/buildbot/'
+curl -XDELETE "http://$1:9200/buildbot/"
 
-curl -XPUT 'http://localhost:9200/buildbot/' -d '{
+curl -XPUT "http://$1:9200/buildbot/" -d '{
     "mappings" : {
         "step" : {
             "properties" : {
