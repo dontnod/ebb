@@ -53,7 +53,8 @@ def main():
     for success, result in bulk(database, actions, thread_count=args.threads):
         doc_id = result['index']['_id']
         if not success:
-            _LOGGER.error('Error indexing object %s', doc_id)
+            _LOGGER.error('Error indexing object %s : %s', doc_id, result)
+            error = True
         else:
             _LOGGER.info('Indexed item %s', doc_id)
 
