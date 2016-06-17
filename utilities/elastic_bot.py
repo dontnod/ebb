@@ -30,6 +30,9 @@ import os
 import re
 import sys
 
+import dateutil.tz
+import pytz
+
 import elasticsearch
 import elasticsearch.connection
 import elasticsearch.helpers
@@ -42,11 +45,16 @@ def main():
     ''' Entry Point '''
     args = _load_arguments()
     _init_logging(args.verbose)
+
+    tz_name = args.buildbot_timezone
+    timezone = dateutil.tz.tzlocal() if not tz_name else pytz.timezone(tz_name)
+
     database = elasticsearch.Elasticsearch(args.nodes)
     actions = _get_bulk_actions(database,
                                 args.index,
                                 args.builders_dir,
-                                args.overwrite)
+                                args.overwrite,
+                                timezone)
 
     bulk = elasticsearch.helpers.parallel_bulk
     error = False
@@ -105,43 +113,53 @@ def _load_arguments():
                         default=1,
                         help=('Number of database threads to create.'))
 
+    parser.add_argument('--buildbot-timezone',
+                        type=str,
+                        default=None,
+                        help=('Timezone of timestamps stored in buildbot pickles'))
+
     return parser.parse_args()
 
-def _get_bulk_actions(database, index, builders_dir, overwrite):
-    last_builds = {} if overwrite else _get_last_builds(database, index)
+def _get_bulk_actions(database, index, builders_dir, overwrite, timezone):
+    try:
+        last_builds = {} if overwrite else _get_last_builds(database, index)
 
-    for builder_name, builder_dir in _discover_builders(builders_dir):
-        if builder_name in last_builds:
-            last_build = last_builds[builder_name]
-        else:
-            last_build = -1
+        for builder_name, builder_dir in _discover_builders(builders_dir):
+            if builder_name in last_builds:
+                last_build = last_builds[builder_name]
+            else:
+                last_build = -1
 
-        for build in _load_builds(builder_name, builder_dir, last_build):
-            build_id = '_'.join([builder_name, str(build.number)])
-            build_properties = _get_build_properties(build)
-            _LOGGER.debug('Created build %s:%s document',
-                          builder_name,
-                          build.number)
-            for key, value in build_properties.iteritems():
-                _LOGGER.debug('%s : %s', key, value)
-
-            for step in build.steps:
-                if step.started is None:
-                    continue
-
-                step_id = '_'.join([build_id, str(step.step_number)])
-                step_properties = _get_step_properties(build, step)
-                _LOGGER.debug('Created step %s:%s:%s document',
+            for build in _load_builds(builder_name, builder_dir, last_build):
+                build_id = '_'.join([builder_name, str(build.number)])
+                build_properties = _get_build_properties(build, timezone)
+                _LOGGER.debug('Created build %s:%s document',
                               builder_name,
-                              build.number,
-                              step.step_number)
-                for key, value in step_properties.iteritems():
+                              build.number)
+                for key, value in build_properties.iteritems():
                     _LOGGER.debug('%s : %s', key, value)
-                yield _get_action(index, 'step', step_id, step_properties)
 
-            yield _get_action(index, 'build', build_id, build_properties)
+                for step in build.steps:
+                    if step.started is None:
+                        continue
 
-            _LOGGER.debug('Loaded build %s:%s', builder_name, build.number)
+                    step_id = '_'.join([build_id, str(step.step_number)])
+                    step_properties = _get_step_properties(build, step, timezone)
+                    _LOGGER.debug('Created step %s:%s:%s document',
+                                  builder_name,
+                                  build.number,
+                                  step.step_number)
+                    for key, value in step_properties.iteritems():
+                        _LOGGER.debug('%s : %s', key, value)
+                    yield _get_action(index, 'step', step_id, step_properties)
+
+                yield _get_action(index, 'build', build_id, build_properties)
+
+                _LOGGER.debug('Loaded build %s:%s', builder_name, build.number)
+    #pylint: disable=broad-except
+    except Exception as ex:
+        _LOGGER.error('An error occured during build informations gathering %s',
+                      ex)
 
 def _get_last_builds(database, index):
     body = {
@@ -230,8 +248,8 @@ def _load_builds(builder_name, builder_dir, last_indexed_build):
 
                 yield build
 
-def _get_build_properties(build):
-    document = _get_properties('build', build, build)
+def _get_build_properties(build, timezone):
+    document = _get_properties('build', build, build, timezone)
 
     trigger_date = 0
     has_changes = False
@@ -249,18 +267,23 @@ def _get_build_properties(build):
 
     return document
 
-def _get_step_properties(build, step):
-    document = _get_properties('step', build, step)
+def _get_step_properties(build, step, timezone):
+    document = _get_properties('step', build, step, timezone)
     document['step_name'] = step.name
     document['step_number'] = step.step_number
     return document
 
-def _get_properties(doc_type, build, build_or_step):
+def _get_properties(doc_type, build, build_or_step, timezone):
+    start = datetime.datetime.fromtimestamp(build_or_step.started,
+                                            tz=timezone)
+    end = datetime.datetime.fromtimestamp(build_or_step.finished,
+                                          tz=timezone)
+
     document = {
         'type' : doc_type,
         'blamelist' : '-'.join(build.blamelist),
-        'start' : datetime.datetime.fromtimestamp(build_or_step.started),
-        'end' : datetime.datetime.fromtimestamp(build_or_step.finished),
+        'start' : start,
+        'end' : end,
         'duration' : build_or_step.finished - build_or_step.started,
         'result': buildbot.status.builder.Results[build_or_step.results],
     }
