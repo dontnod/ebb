@@ -960,7 +960,7 @@ class Sync(Step):
         assert mode in ['incremental', 'full', None]
         Scope.set_checked('sync_alwaysUseLatest', always_use_latest, bool)
         Scope.set_checked('sync_retry', retry, tuple)
-        assert len(retry) == 2
+        assert retry is None or len(retry) == 2
         Scope.set_checked('sync_logEnviron', log_environ, bool)
 
     def _get_step(self, config, step_args):
