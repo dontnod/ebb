@@ -608,7 +608,7 @@ class Builder(Scope):
         ''' Adds a step to this builder '''
         self._factory.addStep(step)
 
-    def trigger_on_change(self, accept_regex, reject_regex=None):
+    def trigger_on_change(self, accept_regex=None, reject_regex=None):
         ''' Triggers this build on change from source control '''
         self._accept_regex = accept_regex
         self._reject_regex = reject_regex
@@ -933,6 +933,9 @@ class Git(Repository):
                                  additional=step_args)
 
     def _build_change_sources(self, config, args):
+        project_name = self.get_interpolated('project_name')
+        if project_name is not None:
+            args['project'] = project_name
         yield self._build_class(buildbot.changes.gitpoller.GitPoller,
                                 ('git_common', 'git_boll'),
                                 additional=args)
@@ -1107,6 +1110,9 @@ class _ChangeFilter(object):
         self._reject = reject
 
     def __call__(self, change):
+        if self._accept is None:
+            return True
+
         if 'buildbot' in change.who.lower():
             return False
         print '[FILTER] Filtering change %s ' % change
