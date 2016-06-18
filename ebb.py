@@ -608,7 +608,7 @@ class Builder(Scope):
         ''' Adds a step to this builder '''
         self._factory.addStep(step)
 
-    def trigger_on_change(self, accept_regex=None, reject_regex=None):
+    def trigger_on_change(self, accept_regex='.*', reject_regex=None):
         ''' Triggers this build on change from source control '''
         self._accept_regex = accept_regex
         self._reject_regex = reject_regex
@@ -744,6 +744,7 @@ class Builder(Scope):
     def _add_single_branch_scheduler(self, config):
         if self._accept_regex is None:
             return
+
         args = {'filter_fn' : _ChangeFilter(self.interpolate(self._accept_regex),
                                             self.interpolate(self._reject_regex))
                }
