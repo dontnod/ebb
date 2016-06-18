@@ -31,6 +31,7 @@ import time
 import buildbot.buildslave
 import buildbot.changes
 import buildbot.changes.p4poller
+import buildbot.changes.gitpoller
 import buildbot.config
 import buildbot.interfaces
 import buildbot.process.factory
@@ -45,6 +46,8 @@ import buildbot.status.web.authz
 import buildbot.status.words
 import buildbot.steps.shell
 import buildbot.steps.source.p4
+import buildbot.steps.source.git
+import buildbot.steps.python
 import buildbot.steps.trigger
 import buildbot.util
 
@@ -893,6 +896,46 @@ class P4(Repository):
                                    additional=args)
             yield p4
 
+class Git(Repository):
+    ''' Git repository '''
+    def __init__(self, name, repo_url):
+        super(Git, self).__init__(name)
+        Scope.set_checked('git_common_repourl', repo_url, str)
+
+    @staticmethod
+    def config(git_bin=None,
+               use_time_stamps=None,
+               encoding=None,
+               branch=None,
+               submodules=None,
+               shallow=None,
+               progress=None,
+               retry_fetch=None,
+               clobber_on_failure=None,
+               method=None):
+        ''' Common global git parameters '''
+        Scope.set_checked('git_poll_gitbin', git_bin, str)
+        Scope.set_checked('get_poll_usetimestamps', use_time_stamps, bool)
+        Scope.set_checked('git_poll_encoding', encoding, str)
+        Scope.set_checked('git_common_branch', branch, str)
+        Scope.set_checked('git_sync_submodules', submodules, bool)
+        Scope.set_checked('git_sync_shallow', shallow, bool)
+        Scope.set_checked('git_sync_progress', progress, bool)
+        Scope.set_checked('git_sync_retryFetch', retry_fetch, bool)
+        Scope.set_checked('git_sync_clobberOnFailure', clobber_on_failure, bool)
+        Scope.set_checked('git_sync_method', method, str)
+        assert method in [None, 'clobber', 'fresh', 'clean', 'copy']
+
+    def get_sync_step(self, _, step_args):
+        ''' Returns sync step for this repository '''
+        return self._build_class(buildbot.steps.source.git.Git,
+                                 ('git_common', 'git_sync'),
+                                 additional=step_args)
+
+    def _build_change_sources(self, config, args):
+        yield self._build_class(buildbot.changes.gitpoller.GitPoller,
+                                ('git_common', 'git_boll'),
+                                additional=args)
 class Step(Scope):
     ''' Build step '''
     def __init__(self, name):
@@ -1015,6 +1058,45 @@ class Command(Step):
                                  'shell_command',
                                  rendered=['shell_command_logfiles'],
                                  additional=step_args)
+
+class Pylint(Step):
+    ''' Runs pylint '''
+    def __init__(self, command):
+        super(Pylint, self).__init__('pylint')
+        self._command = command
+
+    def _get_step(self, config, step_args):
+        step_args['command'] = self.render(shlex.split(self._command))
+        return self._build_class(buildbot.steps.python.PyLint,
+                                 (),
+                                 additional=step_args)
+class Sphinx(Step):
+    ''' Builds sphinx documentation '''
+    def __init__(self):
+        super(Sphinx, self).__init__('build sphink documentation')
+
+    @staticmethod
+    def config(build_dir=None,
+               source_dir=None,
+               builder=None,
+               sphinx=None,
+               tags=None,
+               defines=None,
+               mode=None):
+        Scope.set_checked('sphinx_sphinx_builddir', build_dir, str)
+        Scope.set_checked('sphinx_sphinx_sourcedir', source_dir, str)
+        Scope.set_checked('sphinx_sphinx_builder', builder, str)
+        Scope.set_checked('sphinx_sphinx', sphinx, str)
+        Scope.set_checked('sphinx_tags', tags, str)
+        Scope.set_checked('sphinx_defines', defines, str)
+        Scope.set_checked('sphinx_mode', mode, str)
+
+
+    def _get_step(self, config, step_args):
+        return self._build_class(buildbot.steps.python.Sphinx,
+                                 ('sphinx'),
+                                 additional=step_args)
+
 
 class _ChangeFilter(object):
     ''' Callable filtering change matching a regular expression against modified
