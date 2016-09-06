@@ -478,6 +478,7 @@ class Config(Scope):
 
     def get_slave_list(self, *tags):
         """ Returns declared slaves matching *all* given tags """
+        # TODO: allow the tag1|tag2 syntax for e.g. 'linux|win64'
         result = []
         tagset = set()
         for tag in tags:
