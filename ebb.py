@@ -425,11 +425,12 @@ class Config(Scope):
         Scope.set_checked('web_status_password', password, str)
 
     @staticmethod
-    def irc_status(server, nick, password=None):
+    def irc_status(server, nick, password=None, use_revisions=True):
         ''' Sets web status configuration '''
         Scope.set_checked('irc_server', server, str)
         Scope.set_checked('irc_nick', nick, str)
         Scope.set_checked('irc_password', password, str)
+        Scope.set_checked('irc_useRevisions', use_revisions, bool)
 
     @staticmethod
     def add_irc_channel(channel, password=None):
