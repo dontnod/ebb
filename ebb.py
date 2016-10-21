@@ -597,6 +597,7 @@ class Builder(Scope):
         super(Builder, self).__init__()
         self._accept_regex = None
         self._reject_regex = None
+        self._ignore_message = None
         self._factory = buildbot.process.factory.BuildFactory()
         self._nightly = None
 
@@ -610,10 +611,11 @@ class Builder(Scope):
         ''' Adds a step to this builder '''
         self._factory.addStep(step)
 
-    def trigger_on_change(self, accept_regex='.*', reject_regex=None):
+    def trigger_on_change(self, accept_regex='.*', reject_regex=None, ignore_message=None):
         ''' Triggers this build on change from source control '''
         self._accept_regex = accept_regex
         self._reject_regex = reject_regex
+        self._ignore_message = ignore_message
 
     def trigger_nightly(self,
                         minute=None,
@@ -748,7 +750,8 @@ class Builder(Scope):
             return
 
         args = {'filter_fn' : _ChangeFilter(self.interpolate(self._accept_regex),
-                                            self.interpolate(self._reject_regex))
+                                            self.interpolate(self._reject_regex),
+                                            self.interpolate(self._ignore_message))
                }
 
         change_filter = self._build_class(buildbot.changes.filter.ChangeFilter,
@@ -1108,16 +1111,23 @@ class _ChangeFilter(object):
     ''' Callable filtering change matching a regular expression against modified
         files
     '''
-    def __init__(self, accept, reject=None):
+    def __init__(self, accept, reject=None, ignore_message=None):
         self._accept = accept
         self._reject = reject
+        self._ignore_message = ignore_message
 
     def __call__(self, change):
         if self._accept is None:
             return True
 
+        # Ignore changes from buildbot
         if 'buildbot' in change.who.lower():
             return False
+
+        # Ignore changes that contain ignore_message
+        if re.match(self._ignore_message, change.comment):
+            return False
+
         print '[FILTER] Filtering change %s ' % change
         for file_it in change.files:
             args = (file_it, self._accept)
