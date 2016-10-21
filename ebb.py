@@ -1117,29 +1117,29 @@ class _ChangeFilter(object):
         self._ignore_message = ignore_message
 
     def __call__(self, change):
-        if self._accept is None:
-            return True
+        print '[FILTER] Filtering change %s ' % change
 
         # Ignore changes from buildbot
         if 'buildbot' in change.who.lower():
+            print '[FILTER] * Rejecting Change (submitted by buildbot)'
             return False
 
-        print '[FILTER] Filtering change %s ' % change
-
         # Ignore changes that contain ignore_message
-        if re.match(self._ignore_message, change.comments):
+        if self._ignore_message is not None and \
+           re.match(self._ignore_message, change.comments) is not None:
             print '[FILTER] * Rejecting Change (contains skip tag)'
             return False
 
         for file_it in change.files:
             args = (file_it, self._accept)
             print ' [FILTER] * Matching %s against accept %s' % args
-            if re.match(self._accept, file_it) is not None:
-                if self._reject is not None:
-                    if re.match(self._reject, file_it) is not None:
-                        args = (file_it, self._reject)
-                        print '[FILTER] * Matching %s against reject %s' % args
-                        continue
+            if self._accept is None or \
+               re.match(self._accept, file_it) is not None:
+                if self._reject is not None and\
+                   re.match(self._reject, file_it) is not None:
+                    args = (file_it, self._reject)
+                    print '[FILTER] * Matching %s against reject %s' % args
+                    continue
                 print '[FILTER] * Accepting change'
                 return True
         print '[FILTER] * Rejecting Change'
