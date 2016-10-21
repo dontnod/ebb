@@ -1124,11 +1124,13 @@ class _ChangeFilter(object):
         if 'buildbot' in change.who.lower():
             return False
 
+        print '[FILTER] Filtering change %s ' % change
+
         # Ignore changes that contain ignore_message
-        if re.match(self._ignore_message, change.comment):
+        if re.match(self._ignore_message, change.comments):
+            print '[FILTER] * Rejecting Change (contains skip tag)'
             return False
 
-        print '[FILTER] Filtering change %s ' % change
         for file_it in change.files:
             args = (file_it, self._accept)
             print ' [FILTER] * Matching %s against accept %s' % args
