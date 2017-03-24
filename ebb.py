@@ -1186,7 +1186,7 @@ class Trigger(Step):
 
     def _get_step(self, config, step_args):
         args = {'name' : '%s-scheduler' % self.get_interpolated('step_name'),
-                'builderNames' : self._builder_names}
+                'builderNames' : [self.interpolate(it) for it in self._builder_names]}
 
         if self._nightly is not None:
             for key, value in self._nightly.iteritems():
