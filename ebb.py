@@ -478,27 +478,33 @@ class Config(Scope):
         self.buildbot_config['builders'].append(builder)
 
     def get_slave_list(self, *tags):
-        """ Returns declared slaves matching *all* given tags """
+        ''' Returns declared slaves matching *all* given tags
+            Tags can be excluded if they start with “!” '''
         # TODO: allow the tag1|tag2 syntax for e.g. 'linux|win64'
         result = []
-        tagset = set()
+        wanted_tagset, unwanted_tagset = set(), set()
         for tag in tags:
-            tagset.add(tag)
+            if tag[:1] != '!':
+                wanted_tagset.add(tag)
+            else:
+                unwanted_tagset.add(tag[1:])
         for slave in self._slaves:
             slave_tagset = set()
             for tag in slave.get_interpolated('_slave_tags', []):
                 slave_tagset.add(tag)
-            if len(tagset - slave_tagset) == 0:
+            if len(wanted_tagset - slave_tagset) == 0 and \
+               len(unwanted_tagset.intersection(slave_tagset)) == 0:
                 slave_name = slave.get_interpolated('slave_name')
                 result.append(slave_name)
         if len(result) == 0:
-            print 'Error : no slave found builder with tags %s' % tagset
+            print 'Error : no slave found with tags %s and without tags %s' \
+                  % (wanted_tagset, unwanted_tagset)
             for slave in self._slaves:
                 slave_tagset = set()
                 for tag in slave.get_interpolated('_slave_tags', []):
                     slave_tagset.add(tag)
                 args = (slave.get_interpolated('slave_name'),
-                        tagset - slave_tagset)
+                        wanted_tagset - slave_tagset)
                 print 'Slave %s is missing tags %s' % args
 
         return result
