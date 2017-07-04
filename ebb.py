@@ -569,7 +569,7 @@ class Slave(Scope):
     @staticmethod
     def config(password=None,
                max_builds=None,
-               keepalive_interval=None,
+               keepalive_interval=300,
                missing_timeout=None):
         ''' Sets some buildbot slaves settings for current scope '''
         Scope.set_checked('slave_password', password, basestring)
