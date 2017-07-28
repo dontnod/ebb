@@ -864,12 +864,13 @@ class P4(Repository):
 
     @staticmethod
     def config(port=None, user=None, password=None, client=None,
-               binary=None, encoding=None, timezone=None):
+               binary=None, encoding=None, timezone=None, spec_options=None):
         ''' Common global p4 parameters '''
         # TODO : Add ticket management
         Scope.set_checked('p4_common_p4port', port, str)
         Scope.set_checked('p4_common_p4user', user, str)
         Scope.set_checked('p4_common_p4passwd', password, str)
+        Scope.set_checked('p4_sync_p4client_spec_options', spec_options, str)
         Scope.set_checked('p4_sync_p4client', client, str)
         Scope.set_checked('p4_poll_p4bin', binary, str)
         Scope.set_checked('p4_poll_encoding', encoding, str)
