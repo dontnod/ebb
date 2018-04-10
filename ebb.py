@@ -603,7 +603,6 @@ class Builder(Scope):
         super(Builder, self).__init__()
         self._accept_regex = None
         self._reject_regex = None
-        self._ignore_message = None
         self._factory = buildbot.process.factory.BuildFactory()
         self._nightly = None
 
@@ -617,11 +616,10 @@ class Builder(Scope):
         ''' Adds a step to this builder '''
         self._factory.addStep(step)
 
-    def trigger_on_change(self, accept_regex='.*', reject_regex=None, ignore_message=None):
+    def trigger_on_change(self, accept_regex='.*', reject_regex=None):
         ''' Triggers this build on change from source control '''
         self._accept_regex = accept_regex
         self._reject_regex = reject_regex
-        self._ignore_message = ignore_message
 
     def trigger_nightly(self,
                         minute=None,
@@ -755,16 +753,18 @@ class Builder(Scope):
         if self._accept_regex is None:
             return
 
-        args = {'filter_fn' : _ChangeFilter(self.interpolate(self._accept_regex),
-                                            self.interpolate(self._reject_regex),
-                                            self.interpolate(self._ignore_message))
-               }
+        builder_name = self.get_interpolated('builder_name')
+        project_name = self.get_interpolated('project_name')
+
+        args = {
+            'filter_fn': _ChangeFilter(builder_name, project_name,
+                self.interpolate(self._accept_regex), self.interpolate(self._reject_regex))
+        }
 
         change_filter = self._build_class(buildbot.changes.filter.ChangeFilter,
                                           'change_filter',
                                           additional=args)
 
-        builder_name = self.get_interpolated('builder_name')
         args = {'name' : '%s single branch scheduler' % builder_name,
                 'builderNames' : [builder_name],
                 'change_filter' : change_filter,
@@ -1122,38 +1122,31 @@ class _ChangeFilter(object):
     ''' Callable filtering change matching a regular expression against modified
         files
     '''
-    def __init__(self, accept, reject=None, ignore_message=None):
+    def __init__(self, builder, project, accept = None, reject = None):
+        self._builder = builder
+        self._project = project
         self._accept = accept
         self._reject = reject
-        self._ignore_message = ignore_message
 
     def __call__(self, change):
-        print '[FILTER] Filtering change %s ' % change
 
-        # Ignore changes from buildbot
-        if 'buildbot' in change.who.lower():
-            print '[FILTER] * Rejecting Change (submitted by buildbot)'
+        print('[ChangeFilter] %s checking change %s' % (self._builder, change.revision))
+
+        if self._project != change.project:
+            return False
+        if 'buildbot' == change.who.lower():
+            return False
+        if '[Skip]' in change.comments:
             return False
 
-        # Ignore changes that contain ignore_message
-        if self._ignore_message is not None and \
-           re.match(self._ignore_message, change.comments) is not None:
-            print '[FILTER] * Rejecting Change (contains skip tag)'
-            return False
+        for file_path in change.files:
+            is_accepted = self._accept is None or re.match(self._accept, file_path) is not None
+            is_refused = self._reject is not None and re.match(self._reject, file_path) is not None
 
-        for file_it in change.files:
-            args = (file_it, self._accept)
-            print ' [FILTER] * Matching %s against accept %s' % args
-            if self._accept is None or \
-               re.match(self._accept, file_it) is not None:
-                if self._reject is not None and\
-                   re.match(self._reject, file_it) is not None:
-                    args = (file_it, self._reject)
-                    print '[FILTER] * Matching %s against reject %s' % args
-                    continue
-                print '[FILTER] * Accepting change'
+            if is_accepted and not is_refused:
+                print('[ChangeFilter] %s accepted %s (%s)' % (self._builder, change.revision, file_path))
                 return True
-        print '[FILTER] * Rejecting Change'
+
         return False
 
 class Trigger(Step):
