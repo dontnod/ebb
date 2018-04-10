@@ -823,9 +823,10 @@ class Builder(Scope):
 
 class Repository(Scope):
     ''' Change source base scope '''
-    def __init__(self, name):
+    def __init__(self, name, is_polling_enabled):
         super(Repository, self).__init__()
         self.name = name
+        self.is_polling_enabled = is_polling_enabled
         Scope.update('source_control_repositories', name, self)
 
     @staticmethod
@@ -847,6 +848,9 @@ class Repository(Scope):
         ''' Creates a ChangeSource for this repository '''
 
     def _build(self, config):
+        if not self.is_polling_enabled:
+            return
+
         args = self._get_prefixed_properties('change_source')
         for change_source in self._build_change_sources(config, args):
 
@@ -859,8 +863,8 @@ class Repository(Scope):
 
 class P4(Repository):
     ''' P4 handling '''
-    def __init__(self, name):
-        super(P4, self).__init__(name)
+    def __init__(self, name, is_polling_enabled):
+        super(P4, self).__init__(name, is_polling_enabled)
 
     @staticmethod
     def config(port=None, user=None, password=None, client=None,
@@ -911,8 +915,8 @@ class P4(Repository):
 
 class Git(Repository):
     ''' Git repository '''
-    def __init__(self, name, repo_url):
-        super(Git, self).__init__(name)
+    def __init__(self, name, repo_url, is_polling_enabled):
+        super(Git, self).__init__(name, is_polling_enabled)
         Scope.set_checked('git_common_repourl', repo_url, str)
 
     @staticmethod
