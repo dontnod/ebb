@@ -861,6 +861,11 @@ class Repository(Scope):
 
             config.buildbot_config['change_source'].append(change_source)
 
+class P4DebugSource(buildbot.changes.p4poller.P4Source):
+    def _get_process_output(self, args):
+        print(args)
+        return super(P4DebugSource, self)._get_process_output(self, args)
+
 class P4Repository(Repository):
     ''' P4Repository handling '''
     def __init__(self, name, is_polling_enabled):
@@ -919,7 +924,7 @@ class P4Repository(Repository):
             if project_name is not None:
                 args['project'] = project_name
 
-            p4 = self._build_class(buildbot.changes.p4poller.P4Source,
+            p4 = self._build_class(P4DebugSource,
                                    ('p4_common', 'p4_poll'),
                                    additional=args)
             yield p4
