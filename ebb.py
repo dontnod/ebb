@@ -864,9 +864,9 @@ class Repository(Scope):
 
 class P4DebugSource(buildbot.changes.p4poller.P4Source):
     def test(self):
-        print("Test successful")
+        log.msg("Test successful")
     def _get_process_output(self, args):
-        print(args)
+        log.msg('Process: ' + str(args))
         return super(P4DebugSource, self)._get_process_output(self, args)
 
 class P4Repository(Repository):
