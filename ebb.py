@@ -861,10 +861,10 @@ class Repository(Scope):
 
             config.buildbot_config['change_source'].append(change_source)
 
-class P4(Repository):
-    ''' P4 handling '''
+class P4Repository(Repository):
+    ''' P4Repository handling '''
     def __init__(self, name, is_polling_enabled):
-        super(P4, self).__init__(name, is_polling_enabled)
+        super(P4Repository, self).__init__(name, is_polling_enabled)
 
     @staticmethod
     def config(port=None, user=None, password=None, client=None,
@@ -884,6 +884,17 @@ class P4(Repository):
     def add_views(*views):
         ''' Adds p4 mappings for current scope '''
         Scope.append('p4_sync_p4viewspec', *views)
+
+    @staticmethod
+    def set_stream(stream):
+        ''' Adds p4 stream for current scope '''
+        Scope.append('_p4stream', stream)
+        # Hack the “View” entry. The view will be invalid, but it will be
+        # overridden by the “Stream” entry that we insert.
+        # See master/buildbot/steps/source/p4.py in the buildbot sources
+        # to understand why it works.
+        Scope.append('p4_sync_p4viewspec',
+                     ('//ignored/', '...\n\nStream: ' + stream + '\n\n#'))
 
     def get_sync_step(self, _, step_args):
         ''' Returns sync step for this repository '''
@@ -913,10 +924,10 @@ class P4(Repository):
                                    additional=args)
             yield p4
 
-class Git(Repository):
+class GitRepository(Repository):
     ''' Git repository '''
     def __init__(self, name, repo_url, is_polling_enabled):
-        super(Git, self).__init__(name, is_polling_enabled)
+        super(GitRepository, self).__init__(name, is_polling_enabled)
         Scope.set_checked('git_common_repourl', repo_url, str)
 
     @staticmethod
