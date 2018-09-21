@@ -55,6 +55,7 @@ import jinja2
 
 import twisted.internet.utils
 import twisted.internet.defer
+from twisted.python import log
 
 import zope.interface
 
@@ -862,6 +863,8 @@ class Repository(Scope):
             config.buildbot_config['change_source'].append(change_source)
 
 class P4DebugSource(buildbot.changes.p4poller.P4Source):
+    def test(self):
+        print("Test successful")
     def _get_process_output(self, args):
         print(args)
         return super(P4DebugSource, self)._get_process_output(self, args)
@@ -927,6 +930,7 @@ class P4Repository(Repository):
             p4 = self._build_class(P4DebugSource,
                                    ('p4_common', 'p4_poll'),
                                    additional=args)
+            p4.test()
             yield p4
 
 class GitRepository(Repository):
