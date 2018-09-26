@@ -53,8 +53,8 @@ import buildbot.util
 
 import jinja2
 
-import twisted.internet.utils
-import twisted.internet.defer
+from twisted.internet import defer
+from twisted.internet import utils
 
 import zope.interface
 
@@ -861,6 +861,51 @@ class Repository(Scope):
 
             config.buildbot_config['change_source'].append(change_source)
 
+class P4StreamSource(buildbot.changes.p4poller.P4Source):
+    def __init__(self, **args):
+        return super(P4StreamSource, self).__init__(**args);
+
+    @defer.inlineCallbacks
+    #pylint: disable=invalid-name,missing-docstring
+    def _get_process_output(self, args):
+        base_get_process_output = super(P4StreamSource, self)._get_process_output
+
+        # If action is not 'p4 changes', use the original function
+        if 'changes' not in args:
+            tmp = yield base_get_process_output(args)
+            defer.returnValue(tmp)
+
+        # Last argument is the location we're polling
+        location, suffix = args[-1], ""
+        if '...' in location:
+            n = location.index('...')
+            location, suffix = location[:n], location[n:]
+        client = re.sub('[^a-zA-Z0-9]+', '-', 'poll-' + location).lower()
+
+        # All arguments before changes are P4 options
+        argc = args.index('changes')
+        baseargs = args[:argc]
+
+        # Check whether the location is a stream
+        tmp = yield base_get_process_output(baseargs + [ 'streams' ])
+        if 'Stream %s ' % location not in tmp:
+            tmp = yield base_get_process_output(args)
+            defer.returnValue(tmp)
+
+        # Check that our client references the stream
+        tmp = yield base_get_process_output(baseargs + [ 'client', '-o', client ])
+        if 'Stream: %s' % location not in tmp:
+            # Ensure the client exists
+            p4clientcmd = '%s %s client' % (self.p4bin, ' '.join(baseargs))
+            shargs = '%s -o %s | %s -i' % (p4clientcmd, client, p4clientcmd)
+            tmp = yield utils.getProcessOutput('/bin/sh', [ '-c', shargs ])
+
+            # Force switch the client stream
+            tmp = yield base_get_process_output(baseargs + [ 'client', '-f', '-s', '-S', location, client ])
+
+        tmp = yield base_get_process_output([ '-c', client ] + args[:-1] + [ '//%s%s' % (client, suffix) ])
+        defer.returnValue(tmp)
+
 class P4Repository(Repository):
     ''' P4Repository handling '''
     def __init__(self, name, is_polling_enabled):
@@ -919,7 +964,7 @@ class P4Repository(Repository):
             if project_name is not None:
                 args['project'] = project_name
 
-            p4 = self._build_class(buildbot.changes.p4poller.P4Source,
+            p4 = self._build_class(P4StreamSource,
                                    ('p4_common', 'p4_poll'),
                                    additional=args)
             yield p4
@@ -1240,7 +1285,7 @@ def p4_email_lookup(scope):
 
             self._email_re = re.compile(r"Email:\s+(?P<email>\S+@\S+)\s*$")
 
-        @twisted.internet.defer.deferredGenerator
+        @defer.inlineCallbacks
         #pylint: disable=invalid-name,missing-docstring
         def getAddress(self, name):
             if '@' in name:
@@ -1255,8 +1300,8 @@ def p4_email_lookup(scope):
             if self._password:
                 args.extend(['-P', self._password])
             args.extend(['user', '-o', name])
-            output = twisted.internet.utils.getProcessOutput(self._p4bin, args)
-            deferred = twisted.internet.defer.waitForDeferred(output)
+            output = utils.getProcessOutput(self._p4bin, args)
+            deferred = defer.waitForDeferred(output)
             yield deferred
             result = deferred.getResult()
 
