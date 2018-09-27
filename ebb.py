@@ -894,7 +894,7 @@ class P4StreamSource(buildbot.changes.p4poller.P4Source):
 
         # Check that our client references the stream
         tmp = yield base_get_process_output(baseargs + [ 'client', '-o', client ])
-        if 'Stream: %s' % location not in tmp:
+        if 'Stream:\t%s' % location not in tmp:
             # Ensure the client exists
             p4clientcmd = '%s %s client' % (self.p4bin, ' '.join(baseargs))
             shargs = '%s -o %s | %s -i' % (p4clientcmd, client, p4clientcmd)
