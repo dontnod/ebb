@@ -1214,7 +1214,7 @@ class _ChangeFilter(object):
                 log.msg('%s: accepted (%s)' % (msg_prefix, file_path))
                 return True
 
-        log.msg('%s: no file matching %s and not matching' % (msg_prefix, self._accept, self._reject))
+        log.msg('%s: no file matching %s and not matching %s' % (msg_prefix, self._accept, self._reject))
         return False
 
 class Trigger(Step):
