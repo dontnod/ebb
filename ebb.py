@@ -53,6 +53,7 @@ import buildbot.util
 
 import jinja2
 
+from twisted.python import log
 from twisted.internet import defer
 from twisted.internet import utils
 
@@ -863,6 +864,7 @@ class Repository(Scope):
 
 class P4StreamSource(buildbot.changes.p4poller.P4Source):
     def __init__(self, **args):
+        self._stream = None
         return super(P4StreamSource, self).__init__(**args);
 
     @defer.inlineCallbacks
@@ -880,17 +882,23 @@ class P4StreamSource(buildbot.changes.p4poller.P4Source):
         if '...' in location:
             n = location.index('...')
             location, suffix = location[:n], location[n:]
+        if self._stream:
+            location = self._stream
         client = re.sub('[^a-zA-Z0-9]+', '-', 'poll-' + location).lower()
 
         # All arguments before changes are P4 options
         argc = args.index('changes')
         baseargs = args[:argc]
 
-        # Check whether the location is a stream
+        # Check whether the location is a stream; otherwise, bail out
         tmp = yield base_get_process_output(baseargs + [ 'streams' ])
         if 'Stream %s ' % location not in tmp:
             tmp = yield base_get_process_output(args)
             defer.returnValue(tmp)
+
+        # Force p4base to be // in order to catch all changes to this client
+        self._stream = location
+        self.p4base = '//'
 
         # Check that our client references the stream
         tmp = yield base_get_process_output(baseargs + [ 'client', '-o', client ])
@@ -1186,13 +1194,16 @@ class _ChangeFilter(object):
 
     def __call__(self, change):
 
-        print('[ChangeFilter] %s checking change %s' % (self._builder, change.revision))
+        msg_prefix = 'ChangeFilter: checking change %s with %s' % (change.revision, self._builder)
 
         if self._project != change.project:
+            log.msg('%s: not our project (%s != %s)' % (msg_prefix, self._project, change.project))
             return False
         if 'buildbot' == change.who.lower():
+            log.msg('%s: ignoring user buildbot' % msg_prefix)
             return False
-        if '[Skip]' in change.comments:
+        if '[skip]' in change.comments.lower():
+            log.msg('%s: ignoring [skip] tag' % msg_prefix)
             return False
 
         for file_path in change.files:
@@ -1200,9 +1211,10 @@ class _ChangeFilter(object):
             is_refused = self._reject is not None and re.match(self._reject, file_path) is not None
 
             if is_accepted and not is_refused:
-                print('[ChangeFilter] %s accepted %s (%s)' % (self._builder, change.revision, file_path))
+                log.msg('%s: accepted (%s)' % (msg_prefix, file_path))
                 return True
 
+        log.msg('%s: no file matching %s and not matching' % (msg_prefix, self._accept, self._reject))
         return False
 
 class Trigger(Step):
