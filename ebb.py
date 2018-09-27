@@ -28,6 +28,14 @@ import re
 import shlex
 import time
 
+import jinja2
+
+from twisted.python import log
+from twisted.internet import defer
+from twisted.internet import utils
+
+import zope.interface
+
 import buildbot.buildslave
 import buildbot.changes
 import buildbot.changes.p4poller
@@ -50,14 +58,6 @@ import buildbot.steps.source.git
 import buildbot.steps.python
 import buildbot.steps.trigger
 import buildbot.util
-
-import jinja2
-
-from twisted.python import log
-from twisted.internet import defer
-from twisted.internet import utils
-
-import zope.interface
 
 class Scope(object):
     ''' Config node : inherit parent config values '''
@@ -759,7 +759,8 @@ class Builder(Scope):
 
         args = {
             'filter_fn': _ChangeFilter(builder_name, project_name,
-                self.interpolate(self._accept_regex), self.interpolate(self._reject_regex))
+                                       self.interpolate(self._accept_regex),
+                                       self.interpolate(self._reject_regex))
         }
 
         change_filter = self._build_class(buildbot.changes.filter.ChangeFilter,
@@ -865,7 +866,7 @@ class Repository(Scope):
 class P4StreamSource(buildbot.changes.p4poller.P4Source):
     def __init__(self, **args):
         self._stream = None
-        return super(P4StreamSource, self).__init__(**args);
+        super(P4StreamSource, self).__init__(**args);
 
     @defer.inlineCallbacks
     #pylint: disable=invalid-name,missing-docstring
@@ -891,27 +892,27 @@ class P4StreamSource(buildbot.changes.p4poller.P4Source):
         baseargs = args[:argc]
 
         # Check whether the location is a stream; otherwise, bail out
-        tmp = yield base_get_process_output(baseargs + [ 'streams' ])
+        tmp = yield base_get_process_output(baseargs + ['streams'])
         if 'Stream %s ' % location not in tmp:
             tmp = yield base_get_process_output(args)
             defer.returnValue(tmp)
 
         # Force p4base to be // in order to catch all changes to this client
         self._stream = location
-        self.p4base = '//'
+        super(P4StreamSource, self).p4base = '//'
 
         # Check that our client references the stream
-        tmp = yield base_get_process_output(baseargs + [ 'client', '-o', client ])
+        tmp = yield base_get_process_output(baseargs + ['client', '-o', client])
         if 'Stream:\t%s' % location not in tmp:
             # Ensure the client exists
             p4clientcmd = '%s %s client' % (self.p4bin, ' '.join(baseargs))
             shargs = '%s -o %s | %s -i' % (p4clientcmd, client, p4clientcmd)
-            tmp = yield utils.getProcessOutput('/bin/sh', [ '-c', shargs ])
+            tmp = yield utils.getProcessOutput('/bin/sh', ['-c', shargs])
 
             # Force switch the client stream
-            tmp = yield base_get_process_output(baseargs + [ 'client', '-f', '-s', '-S', location, client ])
+            tmp = yield base_get_process_output(baseargs + ['client', '-f', '-s', '-S', location, client])
 
-        tmp = yield base_get_process_output([ '-c', client ] + args[:-1] + [ '//%s%s' % (client, suffix) ])
+        tmp = yield base_get_process_output(['-c', client] + args[:-1] + ['//%s%s' % (client, suffix)])
         defer.returnValue(tmp)
 
 class P4Repository(Repository):
@@ -1186,7 +1187,7 @@ class _ChangeFilter(object):
     ''' Callable filtering change matching a regular expression against modified
         files
     '''
-    def __init__(self, builder, project, accept = None, reject = None):
+    def __init__(self, builder, project, accept=None, reject=None):
         self._builder = builder
         self._project = project
         self._accept = accept
@@ -1199,7 +1200,7 @@ class _ChangeFilter(object):
         if self._project != change.project:
             log.msg('%s: not our project (%s != %s)' % (msg_prefix, self._project, change.project))
             return False
-        if 'buildbot' == change.who.lower():
+        if change.who.lower() == 'buildbot':
             log.msg('%s: ignoring user buildbot' % msg_prefix)
             return False
         if '[skip]' in change.comments.lower():
