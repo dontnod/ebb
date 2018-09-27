@@ -463,6 +463,7 @@ class Config(Scope):
         for slave in self._slaves:
             if slave.get_interpolated('slave_name') == name:
                 return slave
+        return None
 
     def build_config(self):
         ''' Builds the buildbot config '''
@@ -866,7 +867,7 @@ class Repository(Scope):
 class P4StreamSource(buildbot.changes.p4poller.P4Source):
     def __init__(self, **args):
         self._stream = None
-        super(P4StreamSource, self).__init__(**args);
+        super(P4StreamSource, self).__init__(**args)
 
     @defer.inlineCallbacks
     #pylint: disable=invalid-name,missing-docstring
@@ -1319,7 +1320,7 @@ def p4_email_lookup(scope):
             if self._encoding:
                 try:
                     result = result.decode(self._encoding)
-                except exceptions.UnicodeError, ex:
+                except exception.UnicodeError, ex:
                     log.msg("p4_email_lookup: couldn't decode e-mail: %s" % ex.encoding)
                     log.msg("p4_email_lookup: in object: %s" % ex.object)
                     log.msg("p4_email_lookup: with command: p4 %s" % ' '.join(args))
