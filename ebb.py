@@ -1272,13 +1272,15 @@ def p4_email_lookup(scope):
         mail_config that will get email from Perforce users '''
     class _Lookup(buildbot.util.ComparableMixin):
         zope.interface.implements(buildbot.interfaces.IEmailLookup)
-        def __init__(self, port, user, password, p4bin):
+        def __init__(self, port, encoding, user, password, p4bin):
             self._port = str(port)
+            self._encoding = encoding
             self._user = user
             self._password = password
             self._p4bin = p4bin if p4bin is not None else 'p4'
 
             assert isinstance(self._port, str)
+            assert isinstance(self._encoding, str)
             assert isinstance(self._user, str)
             assert isinstance(self._password, str)
             assert isinstance(self._p4bin, str)
@@ -1289,8 +1291,7 @@ def p4_email_lookup(scope):
         #pylint: disable=invalid-name,missing-docstring
         def getAddress(self, name):
             if '@' in name:
-                yield name
-                return
+                defer.returnValue(name)
 
             args = []
             if self._port:
@@ -1300,10 +1301,16 @@ def p4_email_lookup(scope):
             if self._password:
                 args.extend(['-P', self._password])
             args.extend(['user', '-o', name])
-            output = utils.getProcessOutput(self._p4bin, args)
-            deferred = defer.waitForDeferred(output)
-            yield deferred
-            result = deferred.getResult()
+            result = yield utils.getProcessOutput(self._p4bin, args)
+
+            if self._encoding:
+                try:
+                    result = result.decode(self._encoding)
+                except exceptions.UnicodeError, ex:
+                    log.msg("p4_email_lookup: couldn't decode e-mail: %s" % ex.encoding)
+                    log.msg("p4_email_lookup: in object: %s" % ex.object)
+                    log.msg("p4_email_lookup: with command: p4 %s" % ' '.join(args))
+                    raise
 
             for line in result.split('\n'):
                 line = line.strip()
@@ -1311,11 +1318,12 @@ def p4_email_lookup(scope):
                     continue
                 match = self._email_re.match(line)
                 if match:
-                    yield match.group('email')
-                    return
+                    defer.returnValue(match.group('email'))
 
-            yield name
+            defer.returnValue(name)
+
     return _Lookup(scope.get_interpolated('p4_common_p4port'),
+                   scope.get_interpolated('p4_poll_encoding'),
                    scope.get_interpolated('p4_common_p4user'),
                    scope.get_interpolated('p4_common_p4passwd'),
                    scope.get_interpolated('p4_poll_p4bin'))
