@@ -356,7 +356,8 @@ class Config(Scope):
         self.buildbot_config['status'] = []
         self.buildbot_config['change_source'] = []
         self.buildbot_config['prioritizeBuilders'] = self._prioritize_builders
-        self.slave_selector = None
+        self.slave_list_selector = None
+        self.next_slave_selector = None
 
     @staticmethod
     def db(url, poll_interval=None):
@@ -642,7 +643,6 @@ class Builder(Scope):
                category=None,
                build_dir=None,
                slave_build_dir=None,
-               next_slave=None,
                next_build=None,
                can_start_build=None,
                merge_requests=None,
@@ -657,7 +657,6 @@ class Builder(Scope):
         Scope.set_checked('builder_category', category, basestring)
         Scope.set_checked('builder_builddir', build_dir, None)
         Scope.set_checked('builder_slavebuilddir', slave_build_dir, basestring)
-        Scope.set_checked('builder_nextSlave', next_slave, None)
         Scope.set_checked('builder_nextBuild', next_build, None)
         Scope.set_checked('builder_canStartBuild', can_start_build, None)
         Scope.set_checked('builder_mergeRequests', merge_requests, None)
@@ -729,8 +728,8 @@ class Builder(Scope):
         Scope.update('builder_properties', name, value)
 
     def _build(self, config):
-        if config.slave_selector:
-            slavenames = config.slave_selector(self)
+        if config.slave_list_selector:
+            slavenames = config.slave_list_selector(self)
         else:
             slave_tags = self.get_interpolated('_builder_slave_tags', [])
             slavenames = config.get_slave_list(*slave_tags)
@@ -738,13 +737,11 @@ class Builder(Scope):
         # TODO locks = get_locks('job', config, scope)
         args = {
             'slavenames': slavenames,
+            'nextSlave': config.next_slave_selector,
             'factory': self._factory,
         }
 
-        builder = self._build_class(buildbot.config.BuilderConfig,
-                                    'builder',
-                                    raw=['builder_nextSlave'],
-                                    additional=args)
+        builder = self._build_class(buildbot.config.BuilderConfig, 'builder', additional=args)
 
         config.add_builder(builder, self)
 
