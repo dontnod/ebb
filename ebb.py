@@ -356,6 +356,7 @@ class Config(Scope):
         self.buildbot_config['status'] = []
         self.buildbot_config['change_source'] = []
         self.buildbot_config['prioritizeBuilders'] = self._prioritize_builders
+        self.slave_selector = None
 
     @staticmethod
     def db(url, poll_interval=None):
@@ -728,12 +729,17 @@ class Builder(Scope):
         Scope.update('builder_properties', name, value)
 
     def _build(self, config):
-        slave_tags = self.get_interpolated('_builder_slave_tags', [])
-        slavenames = config.get_slave_list(*slave_tags)
+        if config.slave_selector:
+            slavenames = config.slave_selector(self)
+        else:
+            slave_tags = self.get_interpolated('_builder_slave_tags', [])
+            slavenames = config.get_slave_list(*slave_tags)
 
         # TODO locks = get_locks('job', config, scope)
-        args = {'slavenames' : slavenames,
-                'factory' : self._factory}
+        args = {
+            'slavenames': slavenames,
+            'factory': self._factory,
+        }
 
         builder = self._build_class(buildbot.config.BuilderConfig,
                                     'builder',
