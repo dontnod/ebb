@@ -900,7 +900,7 @@ class P4StreamSource(buildbot.changes.p4poller.P4Source):
 
         # Force p4base to be // in order to catch all changes to this client
         self._stream = location
-        super(P4StreamSource, self).p4base = '//'
+        self.p4base = '//'
 
         # Check that our client references the stream
         tmp = yield base_get_process_output(baseargs + ['client', '-o', client])
