@@ -620,7 +620,7 @@ class Builder(Scope):
         ''' Adds a step to this builder '''
         self._factory.addStep(step)
 
-    def trigger_on_change(self, accept_regex=None, reject_regex=None):
+    def trigger_on_change(self, accept_regex='.*', reject_regex=None):
         ''' Triggers this build on change from source control '''
         self._accept_regex = accept_regex
         self._reject_regex = reject_regex
@@ -755,6 +755,9 @@ class Builder(Scope):
             parent_trigger.add_builder(self.get_interpolated('builder_name'))
 
     def _add_single_branch_scheduler(self, config):
+        if self._accept_regex is None:
+            return
+
         builder_name = self.get_interpolated('builder_name')
         project_name = self.get_interpolated('project_name')
 
@@ -1208,8 +1211,8 @@ class _ChangeFilter(object):
             log.msg('%s: ignoring [skip] tag' % msg_prefix)
             return False
 
-        if self._accept is None and self._reject is None:
-            log.msg('%s: accepted (no file rules)' % msg_prefix)
+        if self._accept is '.*' and self._reject is None:
+            log.msg('%s: accepted (accept rule is .*)' % msg_prefix)
             return True
 
         for file_path in change.files:
