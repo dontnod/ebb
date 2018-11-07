@@ -24,6 +24,7 @@
 import abc
 import cgi
 import contextlib
+import os
 import re
 import shlex
 import time
@@ -1322,7 +1323,8 @@ def p4_email_lookup(scope):
             if self._password:
                 args.extend(['-P', self._password])
             args.extend(['user', '-o', name])
-            result = yield utils.getProcessOutput(self._p4bin, args)
+            env = dict([(e, os.environ.get(e)) for e in ['PATH', 'HOME'] if os.environ.get(e)])
+            result = yield utils.getProcessOutput(self._p4bin, args, env)
 
             if self._encoding:
                 try:
