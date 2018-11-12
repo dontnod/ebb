@@ -994,7 +994,7 @@ class GitRepository(Repository):
                use_time_stamps=None,
                encoding=None,
                branch=None,
-               submodules=None,
+               submodules=True,
                shallow=None,
                progress=None,
                retry_fetch=None,
