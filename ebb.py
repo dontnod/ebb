@@ -690,7 +690,7 @@ class Builder(Scope):
                           send_to_interested_users, bool)
         Scope.set_checked('mail_subject', subject, str)
         Scope.set_checked('mail_mode', mode, None)
-        Scope.set_checked('mail_addLogs', add_logs, bool)
+        Scope.set_checked('mail_addLogs', add_logs, None)
         Scope.set_checked('mail_relayhost', relay_host, str)
         Scope.set_checked('mail_smtpPort', smpt_port, int)
         Scope.set_checked('mail_useTls', use_tls, bool)
