@@ -527,7 +527,10 @@ class Config(Scope):
 
     def _prioritize_builders(self, _, builders):
         def _get_priority(builder):
-            return self._builders_scopes[builder.name].get('_builder_priority', 0)
+            try:
+                return self._builders_scopes[builder.name].get('_builder_priority', 0)
+            except KeyError:
+                return 99999
         builders.sort(key=_get_priority, reverse=True)
         return builders
 
