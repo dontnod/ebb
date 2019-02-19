@@ -630,7 +630,6 @@ class Builder(Scope):
         Scope.set_checked('builder_nextBuild', next_build, None)
         Scope.set_checked('builder_canStartBuild', can_start_build, None)
         Scope.set_checked('builder_mergeRequests', merge_requests, None)
-        Scope.set_checked('_force_scheduler_enabled', forcable, bool)
         Scope.set_checked('scheduler_onlyImportant', only_important, bool)
         Scope.set_checked('branch_scheduler_treeStableTimer', tree_stable_timer, int)
         Scope.set_checked('scheduler_fileIsImportant', file_is_important, None)
@@ -717,7 +716,6 @@ class Builder(Scope):
 
         self._add_single_branch_scheduler(config)
         self._add_nightly_scheduler(config)
-        self._add_force_scheduler(config)
         self._add_mail_status(config)
 
         parent_trigger = self.get_parent_of_type(Trigger)
@@ -767,17 +765,6 @@ class Builder(Scope):
         scheduler = self._build_class(scheduler_class,
                                       'scheduler',
                                       additional=args)
-        config.buildbot_config['schedulers'].append(scheduler)
-
-    def _add_force_scheduler(self, config):
-        if not self.get('_force_scheduler_enabled'):
-            return
-
-        builder_name = self.get_interpolated('builder_name')
-        args = {'name' : '%s force scheduler' % builder_name,
-                'builderNames' : [builder_name]}
-        scheduler_class = buildbot.schedulers.forcesched.ForceScheduler
-        scheduler = scheduler_class(**args)
         config.buildbot_config['schedulers'].append(scheduler)
 
     def _add_mail_status(self, config):
