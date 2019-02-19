@@ -429,29 +429,6 @@ class Config(Scope):
         Scope.set_checked('web_status_password', password, str)
 
     @staticmethod
-    def irc_status(server, nick, password=None, use_revisions=True):
-        ''' Sets web status configuration '''
-        Scope.set_checked('irc_server', server, str)
-        Scope.set_checked('irc_nick', nick, str)
-        Scope.set_checked('irc_password', password, str)
-        Scope.set_checked('irc_useRevisions', use_revisions, bool)
-
-    @staticmethod
-    def add_irc_channel(channel, password=None):
-        ''' Adds a channel to join for buildbot '''
-        args = {'channel' : channel}
-        if password is not None:
-            args['password'] = password
-
-        Scope.append('irc_channels', args)
-
-    @staticmethod
-    def set_irc_notify_events(*events):
-        ''' Adds events to notify via irc '''
-        for event in events:
-            Scope.update('irc_notify_events', event, 1)
-
-    @staticmethod
     def add_renderer_handlers(*handlers):
         ''' Add rendering handlers that can udpate rendering arguments at build
             time '''
@@ -524,7 +501,6 @@ class Config(Scope):
 
         conf_dict.update(self._get_prefixed_properties('base'))
         self._add_web_status()
-        self._add_irc_status()
 
     def _add_web_status(self):
         http_port = self.get('web_status_port')
@@ -548,13 +524,6 @@ class Config(Scope):
         web_status = buildbot.status.html.WebStatus(http_port=http_port,
                                                     authz=authz)
         self.buildbot_config['status'].append(web_status)
-
-    def _add_irc_status(self):
-        status = self._build_class(buildbot.status.words.IRC,
-                                   'irc',
-                                   positional=('server', 'nick', 'channels'))
-        self.buildbot_config['status'].append(status)
-
 
     def _prioritize_builders(self, _, builders):
         def _get_priority(builder):
