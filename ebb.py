@@ -1171,7 +1171,7 @@ class _ChangeFilter(object):
             log.msg('%s: ignoring [skip] tag' % msg_prefix)
             return False
 
-        if self._accept is '.*' and self._reject is None:
+        if self._accept == '.*' and self._reject is None:
             log.msg('%s: accepted (accept rule is .*)' % msg_prefix)
             return True
 
